@@ -45,5 +45,5 @@ EXPOSE 3838
 RUN sudo chown -R 755 /srv/shiny-server
 
 # run app
-CMD ["/usr/bin/shiny-server.sh"]
-# CMD ["R", "-e", "shiny::runApp('/srv/shiny-server/app', host = '0.0.0.0', port = 3838)"]
+# CMD ["/usr/bin/shiny-server.sh"]
+CMD ["R", "-e", "shiny::runApp('/srv/shiny-server/app', host = '0.0.0.0', port = 3838)"]

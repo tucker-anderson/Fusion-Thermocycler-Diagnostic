@@ -40,14 +40,14 @@ ui <- fluidPage(
         verticalLayout(
                        
           # Input: Select Barcode values if lid is present. Autopopulated on PEEK file upload if barcode information present.
-          numericInput("barcode1", "Lid Barcode 1:", 
-                       NULL, 
-                       min = 10000000000000000000000, 
-                       max = 19999999999999999999999),
-          numericInput("barcode2", "Lid Barcode 2:", 
-                       NULL, 
-                       min = 20000000000000000000000, 
-                       max = 29999999999999999999999)),
+          textInput("barcode1", "Lid Barcode 1:"),
+                       # NULL,
+                       # min = 10000000000000000000000, 
+                       # max = 19999999999999999999999),
+          textInput("barcode2", "Lid Barcode 2:")),
+                       # NULL,
+                       # min = 20000000000000000000000, 
+                       # max = 29999999999999999999999)),
         
         verticalLayout(
           
@@ -164,12 +164,17 @@ server <- function(input, output, session) {
   
   read_barcode <- function(barcode){
     ## takes in a barcode, as a string, and returns expected values for PEEK sheet ##
-    FAM = as.numeric(substr(barcode, 3,6)) * 10
-    HEX = as.numeric(substr(barcode, 7,11))
-    ROX = as.numeric(substr(barcode, 12,15))
+    #FAM = as.numeric(substr(barcode, 3,6)) * 10
+    FAM <- as.numeric(substr(format(barcode, scientific = FALSE), 3, 6)) * 10
+    #HEX = as.numeric(substr(barcode, 7,11))
+    HEX <- as.numeric(substr(format(barcode, scientific = FALSE), 7, 10))
+    #ROX = as.numeric(substr(barcode, 12,15))
+    ROX <- as.numeric(substr(format(barcode, scientific = FALSE), 11, 14))
     #RED647 = as.numeric(substr(barcode, 17,19))
-    RED647 = as.numeric(substr(barcode, 16,19))
-    RED677 = as.numeric(substr(barcode, 20,23))
+    #RED647 = as.numeric(substr(barcode, 16,19))
+    RED647 <- as.numeric(substr(format(barcode, scientific = FALSE), 15, 18))
+    #RED677 = as.numeric(substr(barcode, 20,23))
+    RED677 <- as.numeric(substr(format(barcode, scientific = FALSE), 19, 22))
     
     expected_vals = c(FAM, HEX,ROX, RED647, RED677)
     return(expected_vals)
@@ -399,7 +404,6 @@ server <- function(input, output, session) {
     
     percent_diff_30_subtracted <- check_vals(vals1, vals2, bg_sub_wells, bg_sub_medians)
     percent_diff_30 <- check_vals(vals1, vals2, peek_wells, peek_medians)
-    makeReactiveBinding("percent_diff_30")
     
     list <- list(bg_medians, bg_wells) #combine both into a list
     background <- do.call(rbind.fill, list) #bind them
