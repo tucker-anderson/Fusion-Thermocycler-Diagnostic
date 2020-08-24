@@ -12,7 +12,7 @@ ui <- fluidPage(
   useShinyjs(),
   
   # App title
-  titlePanel("Thermocycler Script"),
+  titlePanel("Thermocycler Diagnostic"),
   
   # Sidebar layout with input and output definitions 
   sidebarLayout(
