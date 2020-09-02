@@ -7,12 +7,13 @@ library("openxlsx")
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
 # TODO Make report and table output more clear
 # TODO Save report/data, SN and Thermocycler SN into backend database
+# TODO hide barcode and peek sheet information unless needed.
 #----------------------------UI DEFINITIONS-----------------------------------------
 ui <- fluidPage(
   useShinyjs(),
   
   # App title
-  titlePanel("Thermocycler Diagnostic"),
+  titlePanel("Panther Fusion Thermocycler Diagnostic Report"),
   
   # Sidebar layout with input and output definitions 
   sidebarLayout(
@@ -20,52 +21,65 @@ ui <- fluidPage(
     # Sidebar panel for inputs 
     sidebarPanel(
       
+      fixedRow(
+        column(5,
+          # Input: Input Thermocycler serial number for record keeping.
+          textInput("pantherSN", "Panther Serial #", placeholder = "2090000001")
+        ),
+        column(5,
+          # Input: Input Thermocycler serial number for record keeping.
+          textInput("thermocyclerSN", "Thermocycler Serial #", placeholder = "J0001D16D0")
+        )
+      ),
+      
+      # # Horizontal line
+      # tags$hr(),
+      
       # Input: Select a file 
       fileInput("peekFile", "Select PEEK Scan File",
+                width = "85%",
                 multiple = FALSE,
                 accept = c("text/csv",
-                           "text/comma-separated-values,text/plain",
+                           # "text/comma-separated-values,text/plain",
                            ".csv")),
       
       # Input: Select Lid Presence
       radioButtons("lid", "Lid Present",
-                   choices = c("No Lid (PEEK sheet, please enter values)" = FALSE,
-                               "Lid" = TRUE),
-                   selected = TRUE),
-
-      splitLayout(
-        cellWidths = c("40%", "60%"),
-        cellArgs = c(overflow = 'invisible'),
+                 choices = c("No Lid (PEEK sheet used)" = FALSE, "Integrated Lid" = TRUE),
+                 inline = TRUE,
+                 selected = TRUE),
+      fixedRow(
+        column(5,
+          verticalLayout(
+            # Input: Select PEEK Lid Values
+            numericInput("peek1", "Peek Sheet FAM:", NULL, step = 100),
+            numericInput("peek2", "Peek Sheet HEX:", NULL, step = 10),
+            numericInput("peek3", "Peek Sheet ROX:", NULL, step = 10),
+            numericInput("peek4", "Peek Sheet RED647:", NULL, step = 10),
+            numericInput("peek5", "Peek Sheet RED677:", NULL, step = 10)
+          )
+        ),
+        column(5,
+          verticalLayout(
+            # Input: Select Barcode values if lid is present. Autopopulated on PEEK file upload if barcode information present.
+            textInput("barcode1", "Lid Barcode 1:", placeholder = "10000000000000000000000"),
+            # NULL,
+            # min = 10000000000000000000000, 
+            # max = 19999999999999999999999),
+            textInput("barcode2", "Lid Barcode 2:", placeholder = "20000000000000000000000")
+          )
+        )
+      ),
         
-        verticalLayout(
-                       
-          # Input: Select Barcode values if lid is present. Autopopulated on PEEK file upload if barcode information present.
-          textInput("barcode1", "Lid Barcode 1:"),
-                       # NULL,
-                       # min = 10000000000000000000000, 
-                       # max = 19999999999999999999999),
-          textInput("barcode2", "Lid Barcode 2:")),
-                       # NULL,
-                       # min = 20000000000000000000000, 
-                       # max = 29999999999999999999999)),
-        
-        verticalLayout(
-          
-          # Input: Select PEEK Lid Values
-          numericInput("peek1", "Peek Sheet 1:", NULL, step = 100),
-          numericInput("peek2", "Peek Sheet 2:", NULL, step = 10),
-          numericInput("peek3", "Peek Sheet 3:", NULL, step = 10),
-          numericInput("peek4", "Peek Sheet 4:", NULL, step = 10),
-          numericInput("peek5", "Peek Sheet 5:", NULL, step = 10))),
-        
-      # Horizontal line
-      tags$hr(),
+      # # Horizontal line
+      # tags$hr(),
       
       # Input: Select a background file
       fileInput("bgFile", "Select Background Scan File",
+                width = "85%",
                 multiple = FALSE,
                 accept = c("text/csv",
-                           "text/comma-separated-values,text/plain",
+                           # "text/comma-separated-values,text/plain",
                            ".csv")),
       
       # Horizontal line
@@ -76,7 +90,6 @@ ui <- fluidPage(
       
       # Output: Downloader to export excel report
       disabled(downloadButton("download", "Download Excel Report"))
-      
     ),
     
     # Main panel for displaying outputs
@@ -93,6 +106,18 @@ ui <- fluidPage(
 
 #----------------------------SERVER DEFINITIONS-----------------------------------------
 server <- function(input, output, session) {
+  
+  shinyjs::runjs("$('#pantherSN').attr('maxlength', 9)")
+  
+  # shinyjs::hide("lid")
+  # shinyjs::hide("barcode1")
+  # shinyjs::hide("barcode2")
+  # shinyjs::hide("peek1")
+  # shinyjs::hide("peek2")
+  # shinyjs::hide("peek3")
+  # shinyjs::hide("peek4")
+  # shinyjs::hide("peek5")
+  
   
   #----------------------------FUNCTION DEFINITIONS-----------------------------------------
   ###defining a function to take in a single file and return the averaged fluorescence per well###
@@ -114,8 +139,6 @@ server <- function(input, output, session) {
     
     RED677 <- subset(well_data, Dye == 4) 
     RED677_ave = ddply(RED677,~Well,summarise,Mean = mean(RFU))
-    
-    
     
     stats <- data.frame(FAM_ave,
                        HEX_ave,
@@ -184,7 +207,6 @@ server <- function(input, output, session) {
   check_vals <- function(vals1, vals2, background_sub_wells, background_sub_medians){
     
     for (i in 1:5) {
-      
       #calculate percentages for fluormeter 1
       background_sub_wells[1:30, i + 1] = ((background_sub_wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
       background_sub_medians[1,i + 1] = ((background_sub_medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
@@ -193,7 +215,6 @@ server <- function(input, output, session) {
       background_sub_wells[31:60, i + 1] = ((background_sub_wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
       background_sub_medians[2,i + 1] = ((background_sub_medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
     }
-    
     
     list <- list(background_sub_medians, background_sub_wells) #combine both into a list
     percent_diff <- do.call(rbind.fill, list) #bind them
@@ -219,7 +240,6 @@ server <- function(input, output, session) {
   
   ###attempt to get barcodes from PEEK input file. If they cannot be found, return empty vector
   get_barcodes <- function(input_PEEK){
-    
     input_lines <- readLines(input_PEEK)
     barcode_lines <- str_subset(input_lines, "Barcode")
     #No barcode lines in file
@@ -296,6 +316,13 @@ server <- function(input, output, session) {
       # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek5').prop('disabled',true)"))
       # session$sendCustomMessage(type = "jsCode", list(code = "$('#barcode1').prop('disabled',false)"))
       # session$sendCustomMessage(type = "jsCode", list(code = "$('#barcode2').prop('disabled',false)"))
+      # shinyjs::hide("barcode1")
+      # shinyjs::hide("barcode2")
+      # shinyjs::hide("peek1")
+      # shinyjs::hide("peek2")
+      # shinyjs::hide("peek3")
+      # shinyjs::hide("peek4")
+      # shinyjs::hide("peek5")
     }                               
     else {
       enable("peek1")
@@ -312,12 +339,19 @@ server <- function(input, output, session) {
       # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek5').prop('disabled',false)"))
       # session$sendCustomMessage(type = "jsCode", list(code = "$('#barcode1').prop('disabled',true)"))
       # session$sendCustomMessage(type = "jsCode", list(code = "$('#barcode2').prop('disabled',true)"))
+      # shinyjs::show("barcode1")
+      # shinyjs::show("barcode2")
+      # shinyjs::show("peek1")
+      # shinyjs::show("peek2")
+      # shinyjs::show("peek3")
+      # shinyjs::show("peek4")
+      # shinyjs::show("peek5")
     }
   })
   
-  # only enable calculate if both files uploaded correctly
+  # only enable calculate if both files uploaded correctly and SNs input in correct format
   observe({
-    req(input$peekFile, input$bgFile)
+    req(input$peekFile, input$bgFile, input$thermocyclerSN, input$pantherSN)
     enable("calculate")
   })
   
