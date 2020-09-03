@@ -13,7 +13,7 @@ ui <- fluidPage(
   useShinyjs(),
   
   # App title
-  titlePanel("Panther Fusion Thermocycler Diagnostic Report"),
+  titlePanel("Panther Fusion Thermocycler Diagnostic Tool"),
   
   # Sidebar layout with input and output definitions 
   sidebarLayout(
@@ -95,10 +95,35 @@ ui <- fluidPage(
     # Main panel for displaying outputs
     mainPanel(
       # Output: Tabset w/ plot, summary, and table
-      tabsetPanel(type = "tabs",
-                  tabPanel("Summary", tableOutput("summary")),
-                  tabPanel("PEEK", tableOutput("peekTable")),
-                  tabPanel("Background", tableOutput("bgTable"))
+      tabsetPanel(id = "tabs", type = "tabs",
+                  tabPanel("Summary", 
+                    tableOutput("summary")),
+                  tabPanel("PEEK",
+                   radioButtons("peekColor", "Dye Color:", inline = TRUE, 
+                                c("FAM" = 0,
+                                  "HEX" = 1,
+                                  "ROX" = 2,
+                                  "RED647" = 3,
+                                  "RED677" = 4)),   
+                    radioButtons("peekAgg", "Aggregation Type:", inline = TRUE, 
+                                 c("Mean" = "mean",
+                                   "Max" = "max",
+                                   "Min" = "min",
+                                   "Std Dev" = "sd")),
+                    tableOutput("peekTable")),
+                  tabPanel("Background", 
+                   radioButtons("bgColor", "Dye Color:", inline = TRUE,
+                                c("FAM" = 0,
+                                  "HEX" = 1,
+                                  "ROX" = 2,
+                                  "RED647" = 3,
+                                  "RED677" = 4)),   
+                    radioButtons("bgAgg", "Aggregation Type:", inline = TRUE,
+                                 c("Mean" = "mean",
+                                   "Max" = "max",
+                                   "Min" = "min",
+                                   "Std Dev" = "sd")),
+                    tableOutput("bgTable"))
       )
     )
   )
@@ -297,6 +322,76 @@ server <- function(input, output, session) {
     return(data_set)
   }
   
+  generate_data_visual <- function(input, color, fun = c("mean", "max", "min", "sd")) {
+    
+    skip <- str_which(readLines(input), ".*Bank No.*") - 1
+    
+    data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip)
+    
+    data_set <- data.frame(data_table$Color, data_table$Well.No, data_table$RFU)
+    names(data_set) <- c("Dye", "Well", "RFU")
+    data_set <- data_set[order(data_set$Well) , ]
+    
+    data_set <- data_set[data_set$Dye == color, ]
+    
+    data_set$Bank <- floor((data_set$Well - 1) / 5) + 1
+    data_set$Bank.Well <- (data_set$Well - 1) %% 5 + 1
+    
+    placeholderBank <- c(0,0,0,0,0)
+    data_reshaped <- data.frame(Bank.Well = 1:5, Bank1 = placeholderBank,
+                                Bank2 = placeholderBank,
+                                Bank3 = placeholderBank,
+                                Bank4 = placeholderBank,
+                                Bank5 = placeholderBank,
+                                Bank6 = placeholderBank,
+                                Bank7 = placeholderBank,
+                                Bank8 = placeholderBank,
+                                Bank9 = placeholderBank,
+                                Bank10 = placeholderBank,
+                                Bank11 = placeholderBank,
+                                Bank12 = placeholderBank)
+    
+    for (i in 1:12) {
+      bank <- paste0("Bank", i)
+      for (j in 1:5) {
+        well <- j
+        if (fun == "mean") {
+          data_reshaped[well, bank] <- mean(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+        }
+        if (fun == "min") {
+          data_reshaped[well, bank] <- min(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+        }
+        if (fun == "max") {
+          data_reshaped[well, bank] <- max(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+        }
+        if (fun == "sd") {
+          data_reshaped[well, bank] <- sd(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+        }
+        if (fun == "median") {
+          data_reshaped[well, bank] <- median(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+        }
+      }
+    }
+    return(data_reshaped)
+  }
+  
+  # generate_data_visual <- function(input) {
+  #   skip <- str_which(readLines(input), ".*Bank No.*") - 1
+  #   
+  #   data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip)
+  #   
+  #   data_set <- data.frame(data_table$Color, data_table$Well.No, data_table$RFU)
+  #   names(data_set) <- c("Dye", "Well", "RFU")
+  #   data_set <- data_set[order(data_set$Well) , ]
+  #   
+  #   data_set <- data_set[data_set$Dye == color, ]
+  #   
+  #   data_set$Bank <- floor((data_set$Well - 1) / 5) + 1
+  #   data_set$Bank.Well <- (data_set$Well - 1) %% 5 + 1
+  #   
+  #   return(data_reshaped)
+  # }
+  
   #----------------------------EVENT OBSERVERS-----------------------------------------
   
   # Event Observers for lid presence. Disable numeric fields if no lid selected.
@@ -361,6 +456,7 @@ server <- function(input, output, session) {
     is_bg <- check_filetype(input$peekFile[["datapath"]], "Background Scan")
     if (is_peek) {
       showNotification("Peek Scan File detected.")
+      updateTabsetPanel(session, "tabs", selected = "PEEK")
     }
     else if (is_bg) {
       alert("Background Scan File detected. Please upload a PEEK scan file.")
@@ -394,13 +490,31 @@ server <- function(input, output, session) {
     }
     else if (is_bg) {
       showNotification("Background Scan File detected.")
+      updateTabsetPanel(session, "tabs", selected = "Background")
     }
     else {
       alert("Unknown Scan File detected. Please upload correct scan file.")
       reset("bgFile")
     }
-    
   })
+  
+  observeEvent({input$tabs == input$PEEK
+    input$peekColor
+    input$peekAgg}, {
+    if (length(input$peekFile) != 0) {
+      peek_visual <- generate_data_visual(input$peekFile[["datapath"]], color = input$peekColor, fun = input$peekAgg)
+      output$peekTable <- renderTable(peek_visual)
+    }
+  })
+  
+  observeEvent({input$tabs == input$Background
+    input$bgColor
+    input$bgAgg}, {
+      if (length(input$bgFile) != 0) {
+        bg_visual <- generate_data_visual(input$bgFile[["datapath"]], color = input$bgColor, fun = input$bgAgg)
+        output$bgTable <- renderTable(bg_visual)
+      }
+    })
   
   # peek_dataset <- eventReactive(input$calculate, {
   #   generate_data(input$peekFile[["datapath"]])
@@ -415,13 +529,13 @@ server <- function(input, output, session) {
     peek_dataset <- generate_data(input$peekFile[["datapath"]])
     peek_wells <- average_wells(peek_dataset)
     peek_medians <- fluorometer_med(peek_wells)
-    output$peekTable <- renderTable(peek_dataset)
+    # output$peekTable <- renderTable(peek_dataset)
     
 
     bg_dataset <- generate_data(input$bgFile[["datapath"]])
     bg_wells <- average_wells(bg_dataset)
     bg_medians <- fluorometer_med(bg_wells)
-    output$bgTable <- renderTable(bg_dataset)
+    # output$bgTable <- renderTable(bg_dataset)
     
     bg_sub_wells = data.frame( c(1:60), (peek_wells[,2:6] - bg_wells[,2:6])) 
     names(bg_sub_wells) <- c("Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")
@@ -505,7 +619,7 @@ server <- function(input, output, session) {
       conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
       conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
     }
-    filename <- "ThermocyclerDiagnosticReport.xlsx"
+    filename <- "../reports/ThermocyclerDiagnosticReport.xlsx"
     
     if (file.exists(filename)) {
       file.remove(filename)
@@ -515,6 +629,7 @@ server <- function(input, output, session) {
 
     enable("download")
     # return(wb)
+    updateTabsetPanel(session, "tabs", selected = "Summary")
   })
   
   output$download <- downloadHandler(
@@ -522,7 +637,7 @@ server <- function(input, output, session) {
         paste("ThermocyclerDiagnosticReport.xlsx", ".xlsx", sep = "")
       },
       content = function(file) {
-        file.copy("ThermocyclerDiagnosticReport.xlsx", file)
+        file.copy("../reports/ThermocyclerDiagnosticReport.xlsx", file)
       }
   )
   
