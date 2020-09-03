@@ -49,20 +49,20 @@ ui <- fluidPage(
                  inline = TRUE,
                  selected = TRUE),
       fixedRow(
-        column(5,
+        column(4,
           verticalLayout(
             # Input: Select PEEK Lid Values
-            textInput("peek1", "Peek Sheet FAM:", placeholder = "e.g 10000"),
-            textInput("peek2", "Peek Sheet HEX:", placeholder = "e.g 2000"),
-            textInput("peek3", "Peek Sheet ROX:", placeholder = "e.g 3000"),
-            textInput("peek4", "Peek Sheet RED647:", placeholder = "e.g 400"),
-            textInput("peek5", "Peek Sheet RED677:", placeholder = "e.g 5000")
+            textInput("peek1", "Peek Sheet FAM:", placeholder = "e.g. 10000"),
+            textInput("peek2", "Peek Sheet HEX:", placeholder = "e.g. 2000"),
+            textInput("peek3", "Peek Sheet ROX:", placeholder = "e.g. 3000"),
+            textInput("peek4", "Peek Sheet RED647:", placeholder = "e.g. 400"),
+            textInput("peek5", "Peek Sheet RED677:", placeholder = "e.g. 5000")
           )
         ),
-        column(5,
+        column(6,
           verticalLayout(
             # Input: Select Barcode values if lid is present. Autopopulated on PEEK file upload if barcode information present.
-            textInput("barcode1", "Lid Barcode 1:", placeholder = "e.g 10000000000000000000000"),
+            textInput("barcode1", "Lid Barcode 1:", placeholder = "e.g. 10000000000000000000000"),
             # NULL,
             # min = 10000000000000000000000, 
             # max = 19999999999999999999999),
