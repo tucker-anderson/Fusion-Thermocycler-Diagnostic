@@ -2,3 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
+# ignore .xlsx temporary reports from app
+/app/*.xlsx
