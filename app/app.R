@@ -24,11 +24,11 @@ ui <- fluidPage(
       fixedRow(
         column(5,
           # Input: Input Thermocycler serial number for record keeping.
-          textInput("pantherSN", "Panther Serial #", placeholder = "2090000001")
+          textInput("pantherSN", "Panther Serial #", placeholder = "e.g. 2090000001")
         ),
         column(5,
           # Input: Input Thermocycler serial number for record keeping.
-          textInput("thermocyclerSN", "Thermocycler Serial #", placeholder = "J0001D16D0")
+          textInput("thermocyclerSN", "Thermocycler Serial #", placeholder = "e.g. J0001D16D0")
         )
       ),
       
@@ -52,21 +52,21 @@ ui <- fluidPage(
         column(5,
           verticalLayout(
             # Input: Select PEEK Lid Values
-            numericInput("peek1", "Peek Sheet FAM:", NULL, step = 100),
-            numericInput("peek2", "Peek Sheet HEX:", NULL, step = 10),
-            numericInput("peek3", "Peek Sheet ROX:", NULL, step = 10),
-            numericInput("peek4", "Peek Sheet RED647:", NULL, step = 10),
-            numericInput("peek5", "Peek Sheet RED677:", NULL, step = 10)
+            textInput("peek1", "Peek Sheet FAM:", placeholder = "e.g 10000"),
+            textInput("peek2", "Peek Sheet HEX:", placeholder = "e.g 2000"),
+            textInput("peek3", "Peek Sheet ROX:", placeholder = "e.g 3000"),
+            textInput("peek4", "Peek Sheet RED647:", placeholder = "e.g 400"),
+            textInput("peek5", "Peek Sheet RED677:", placeholder = "e.g 5000")
           )
         ),
         column(5,
           verticalLayout(
             # Input: Select Barcode values if lid is present. Autopopulated on PEEK file upload if barcode information present.
-            textInput("barcode1", "Lid Barcode 1:", placeholder = "10000000000000000000000"),
+            textInput("barcode1", "Lid Barcode 1:", placeholder = "e.g 10000000000000000000000"),
             # NULL,
             # min = 10000000000000000000000, 
             # max = 19999999999999999999999),
-            textInput("barcode2", "Lid Barcode 2:", placeholder = "20000000000000000000000")
+            textInput("barcode2", "Lid Barcode 2:", placeholder = "e.g. 20000000000000000000000")
           )
         )
       ),
