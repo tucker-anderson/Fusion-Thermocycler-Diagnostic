@@ -41,8 +41,8 @@ COPY ./app /srv/shiny-server/app
 EXPOSE 3838
 
 # allow permission
-# RUN sudo chown -R shiny:shiny /srv/shiny-server
-RUN sudo chown -R 755 /srv/shiny-server
+RUN sudo chown -R shiny:shiny /srv/shiny-server
+# RUN sudo chown -R 755 /srv/shiny-server
 
 # run app
 CMD ["/usr/bin/shiny-server.sh"]

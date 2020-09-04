@@ -7,7 +7,7 @@ library("openxlsx")
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
 # TODO Make report and table output more clear
 # TODO Save report/data, SN and Thermocycler SN into backend database
-# TODO hide barcode and peek sheet information unless needed.
+# TODO test peek lid integration more, especially since chance to textinput
 #----------------------------UI DEFINITIONS-----------------------------------------
 ui <- fluidPage(
   useShinyjs(),
@@ -619,7 +619,7 @@ server <- function(input, output, session) {
       conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
       conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
     }
-    filename <- "../reports/ThermocyclerDiagnosticReport.xlsx"
+    filename <- "./reports/ThermocyclerDiagnosticReport.xlsx"
     
     if (file.exists(filename)) {
       file.remove(filename)
@@ -637,7 +637,7 @@ server <- function(input, output, session) {
         paste("ThermocyclerDiagnosticReport.xlsx", ".xlsx", sep = "")
       },
       content = function(file) {
-        file.copy("../reports/ThermocyclerDiagnosticReport.xlsx", file)
+        file.copy("./reports/ThermocyclerDiagnosticReport.xlsx", file)
       }
   )
   
