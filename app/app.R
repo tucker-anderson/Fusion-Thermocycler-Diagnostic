@@ -1,5 +1,6 @@
 library("shiny")
 library("shinyjs")
+library("shinyFeedback")
 library("stringr")
 library("plyr")
 library("openxlsx")
@@ -11,6 +12,7 @@ library("openxlsx")
 #----------------------------UI DEFINITIONS-----------------------------------------
 ui <- fluidPage(
   useShinyjs(),
+  useShinyFeedback(),
   
   # App title
   titlePanel("Panther Fusion Thermocycler Diagnostic Tool"),
@@ -24,7 +26,7 @@ ui <- fluidPage(
       fixedRow(
         column(5,
           # Input: Input Thermocycler serial number for record keeping.
-          textInput("pantherSN", "Panther Serial #", placeholder = "e.g. 2090000001")
+          textInput("pantherSN", "Panther Serial #", placeholder = "e.g. 2090000001 or NA")
         ),
         column(5,
           # Input: Input Thermocycler serial number for record keeping.
@@ -132,7 +134,7 @@ ui <- fluidPage(
 #----------------------------SERVER DEFINITIONS-----------------------------------------
 server <- function(input, output, session) {
   
-  shinyjs::runjs("$('#pantherSN').attr('maxlength', 9)")
+  # shinyjs::runjs("$('#pantherSN').attr('maxlength', 9)")
   
   # shinyjs::hide("lid")
   # shinyjs::hide("barcode1")
@@ -444,10 +446,41 @@ server <- function(input, output, session) {
     }
   })
   
-  # only enable calculate if both files uploaded correctly and SNs input in correct format
-  observe({
-    req(input$peekFile, input$bgFile, input$thermocyclerSN, input$pantherSN)
-    enable("calculate")
+  # Event observers for SN text input
+  isPantherSN <- reactiveVal(FALSE)
+  observeEvent(input$pantherSN, {
+    if (input$pantherSN == "NA") {
+      hideFeedback("pantherSN")
+      isPantherSN(TRUE) 
+      showFeedbackSuccess("pantherSN")
+    }
+    else if (!grepl("20900[0-9]{5}", input$pantherSN)) {
+      showFeedbackWarning(
+        inputId = "pantherSN",
+        text = "Serial Number should be 10 digits!"
+      )
+      isPantherSN(FALSE)
+    }
+    else {
+      hideFeedback("pantherSN")
+      isPantherSN(TRUE)
+      showFeedbackSuccess("pantherSN")
+    }
+  })
+  isThermocyclerSN <- reactiveVal(FALSE)
+  observeEvent(input$pantherSN, {
+    if (!grepl("J[0-9]{4}[A-Z][0-9]{2}[A-Z][0-9]", input$thermocyclerSN)) {
+      showFeedbackWarning(
+        inputId = "thermocyclerSN",
+        text = "Serial Number should be 10 characters and match example format!"
+      )
+      isThermocyclerSN(FALSE)
+    }
+    else {
+      hideFeedback("thermocyclerSN")
+      isThermocyclerSN(TRUE)
+      showFeedbackSuccess("thermocyclerSN")
+    }
   })
   
   # Event Observers for PEEK File upload. Attempt to verify that file is a PEEK scan and not background and populate barcodes etc.
@@ -630,6 +663,12 @@ server <- function(input, output, session) {
     enable("download")
     # return(wb)
     updateTabsetPanel(session, "tabs", selected = "Summary")
+  })
+  
+  # only enable calculate if both files uploaded correctly and SNs input in correct format
+  observe({
+    req(input$peekFile, input$bgFile, isThermocyclerSN, isPantherSN)
+    enable("calculate")
   })
   
   output$download <- downloadHandler(

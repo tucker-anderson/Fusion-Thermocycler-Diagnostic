@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y \
 # (change it dependeing on the packages you need)
 RUN R -e "install.packages('shiny', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('shinyjs', repos='http://cran.rstudio.com/')"
+RUN R -e "install.packages('shinyFeedback', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('stringr', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('plyr', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('openxlsx', repos='http://cran.rstudio.com/')"
