@@ -133,7 +133,11 @@ ui <- fluidPage(
 
 #----------------------------SERVER DEFINITIONS-----------------------------------------
 server <- function(input, output, session) {
-  
+  isPantherSN <- reactiveVal(FALSE)
+  isThermocyclerSN <- reactiveVal(FALSE)
+  isPeekFile <- reactiveVal(FALSE)
+  isBackgroundFile <- reactiveVal(FALSE)
+
   # shinyjs::runjs("$('#pantherSN').attr('maxlength', 9)")
   
   # shinyjs::hide("lid")
@@ -447,14 +451,18 @@ server <- function(input, output, session) {
   })
   
   # Event observers for SN text input
-  isPantherSN <- reactiveVal(FALSE)
   observeEvent(input$pantherSN, {
-    if (input$pantherSN == "NA") {
+    if (length(input$pantherSN) == 0) {
+      hideFeedback("pantherSN")
+      isPantherSN(FALSE)
+    }
+    else if (input$pantherSN == "NA") {
       hideFeedback("pantherSN")
       isPantherSN(TRUE) 
-      showFeedbackSuccess("pantherSN")
+      showFeedbackSuccess("pantherSN", color = "#337ab7")
     }
-    else if (!grepl("20900[0-9]{5}", input$pantherSN)) {
+    else if (!grepl("^2090[0-9]{6}$", input$pantherSN)) {     
+      hideFeedback("pantherSN")
       showFeedbackWarning(
         inputId = "pantherSN",
         text = "Serial Number should be 10 digits!"
@@ -464,12 +472,17 @@ server <- function(input, output, session) {
     else {
       hideFeedback("pantherSN")
       isPantherSN(TRUE)
-      showFeedbackSuccess("pantherSN")
+      showFeedbackSuccess("pantherSN", color = "#337ab7")
     }
   })
-  isThermocyclerSN <- reactiveVal(FALSE)
-  observeEvent(input$pantherSN, {
-    if (!grepl("J[0-9]{4}[A-Z][0-9]{2}[A-Z][0-9]", input$thermocyclerSN)) {
+  
+  observeEvent(input$thermocyclerSN, {
+    if (length(input$thermocyclerSN) == 0) {
+      hideFeedback("thermocyclerSN")
+      isThermocyclerSN(FALSE)
+    }
+    else if (!grepl("^J[0-9]{4}[A-Z][0-9]{2}[A-Z][0-9]$", input$thermocyclerSN)) { #eg J0001D16D0
+      hideFeedback("thermocyclerSN")
       showFeedbackWarning(
         inputId = "thermocyclerSN",
         text = "Serial Number should be 10 characters and match example format!"
@@ -479,7 +492,7 @@ server <- function(input, output, session) {
     else {
       hideFeedback("thermocyclerSN")
       isThermocyclerSN(TRUE)
-      showFeedbackSuccess("thermocyclerSN")
+      showFeedbackSuccess("thermocyclerSN", color = "#337ab7")
     }
   })
   
@@ -490,14 +503,17 @@ server <- function(input, output, session) {
     if (is_peek) {
       showNotification("Peek Scan File detected.")
       updateTabsetPanel(session, "tabs", selected = "PEEK")
+      isPeekFile(TRUE)
     }
     else if (is_bg) {
       alert("Background Scan File detected. Please upload a PEEK scan file.")
       reset("peekFile")
+      isPeekFile(FALSE)
     }
     else {
       alert("Unknown Scan File detected. Please upload correct scan file.")
       reset("peekFile")
+      isPeekFile(FALSE)
     }
     
     barcodes <- get_barcodes(input$peekFile[["datapath"]])
@@ -520,14 +536,17 @@ server <- function(input, output, session) {
       showNotification("Peek Scan File detected.")
       alert("PEEK Scan File detected. Please upload a Background scan file.")
       reset("bgFile")
+      isBackgroundFile(FALSE)
     }
     else if (is_bg) {
       showNotification("Background Scan File detected.")
       updateTabsetPanel(session, "tabs", selected = "Background")
+      isBackgroundFile(TRUE)
     }
     else {
       alert("Unknown Scan File detected. Please upload correct scan file.")
       reset("bgFile")
+      isBackgroundFile(FALSE)
     }
   })
   
@@ -667,8 +686,16 @@ server <- function(input, output, session) {
   
   # only enable calculate if both files uploaded correctly and SNs input in correct format
   observe({
-    req(input$peekFile, input$bgFile, isThermocyclerSN, isPantherSN)
-    enable("calculate")
+    if (isPeekFile() && isBackgroundFile() && isThermocyclerSN() && isPantherSN()) {
+      enable("calculate")
+      showFeedbackSuccess("calculate", color = "#337ab7")
+    }
+    else {
+      disable("calculate")
+      hideFeedback("calculate")
+    }
+    # req(input$peekFile, input$bgFile, isThermocyclerSN, isPantherSN)
+    # enable("calculate")
   })
   
   output$download <- downloadHandler(
