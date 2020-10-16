@@ -4,3 +4,4 @@
 .Ruserdata
 # ignore reports from app
 /app/reports
+/data
