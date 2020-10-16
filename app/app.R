@@ -4,11 +4,12 @@ library("shinyFeedback")
 library("stringr")
 library("plyr")
 library("openxlsx")
+library("RPostgreSQL")
 
+# TODO make wb generation a function
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
 # TODO Make report and table output more clear
 # TODO Save report/data, SN and Thermocycler SN into backend database
-# TODO test peek lid integration more, especially since chance to textinput
 #----------------------------UI DEFINITIONS-----------------------------------------
 ui <- fluidPage(
   useShinyjs(),
@@ -26,7 +27,7 @@ ui <- fluidPage(
       fixedRow(
         column(5,
           # Input: Input Thermocycler serial number for record keeping.
-          textInput("pantherSN", "Panther Serial #", placeholder = "e.g. 2090000001 or NA")
+          textInput("pantherSN", "Panther Serial #", placeholder = "e.g. 2090000101")
         ),
         column(5,
           # Input: Input Thermocycler serial number for record keeping.
@@ -133,25 +134,28 @@ ui <- fluidPage(
 
 #----------------------------SERVER DEFINITIONS-----------------------------------------
 server <- function(input, output, session) {
+  db <- 'tc_diagnostic'
+  host_db <- 'localhost'
+  db_port <- '5432'
+  db_user <- 'shiny_user'
+  db_password <- 'shiny'
+  
+  con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
+  
   isPantherSN <- reactiveVal(FALSE)
   isThermocyclerSN <- reactiveVal(FALSE)
   isPeekFile <- reactiveVal(FALSE)
   isBackgroundFile <- reactiveVal(FALSE)
 
-  # shinyjs::runjs("$('#pantherSN').attr('maxlength', 9)")
-  
-  # shinyjs::hide("lid")
-  # shinyjs::hide("barcode1")
-  # shinyjs::hide("barcode2")
-  # shinyjs::hide("peek1")
-  # shinyjs::hide("peek2")
-  # shinyjs::hide("peek3")
-  # shinyjs::hide("peek4")
-  # shinyjs::hide("peek5")
+  peekFilemd5 <- reactiveVal("")
+  bgFilemd5 <- reactiveVal("")
   
   
   #----------------------------FUNCTION DEFINITIONS-----------------------------------------
   ###defining a function to take in a single file and return the averaged fluorescence per well###
+  # Returns string without leading white space
+  trim.leading <- function(x)  sub("^\\s+", "", x)
+  
   average_wells <- function(well_data){
     
     well_data <- well_data[order(well_data$Dye) , ]
@@ -273,13 +277,15 @@ server <- function(input, output, session) {
   get_barcodes <- function(input_PEEK){
     input_lines <- readLines(input_PEEK)
     barcode_lines <- str_subset(input_lines, "Barcode")
-    #No barcode lines in file
+    #No barcodes in file
     if (length(barcode_lines) == 0) {
       return(vector())
     }
     barcodes <- str_extract(barcode_lines, "[0-9]{22,}")
     barcode_1 <- barcodes[1]
     barcode_2 <- barcodes[2]
+    
+
     
     if (nchar(barcode_1) == 23) {
       barcode_1 <- paste0(str_sub(barcode_1,1,6), str_sub(barcode_1,8))
@@ -289,6 +295,44 @@ server <- function(input, output, session) {
     } 
     
     return(c(barcode_1, barcode_2))
+  }
+  
+  get_peek_values <- function(input_PEEK){
+    input_lines <- readLines(input_PEEK)
+    peek1_line <- str_subset(input_lines, "PeekLid Values Fluorometer 1")
+    peek2_line <- str_subset(input_lines, "PeekLid Values Fluorometer 2")
+    
+    #No peek lines in file
+    if (length(peek1_line) == 0 | length(peek2_line) == 0) {
+      return(vector())
+    }
+    
+    # extract peek lid values if present
+    FAM_1 <- str_match(peek1_line, "FAM: ([0-9]+)")[2]
+    HEX_1 <- str_match(peek1_line, "HEX: ([0-9]+)")[2]
+    ROX_1 <- str_match(peek1_line, "ROX: ([0-9]+)")[2]
+    RED646_1 <- str_match(peek1_line, "RED646: ([0-9]+)")[2]
+    RED677_1 <- str_match(peek1_line, "RED677: ([0-9]+)")[2]
+    FAM_2 <- str_match(peek2_line, "FAM: ([0-9]+)")[2]
+    HEX_2 <- str_match(peek2_line, "HEX: ([0-9]+)")[2]
+    ROX_2 <- str_match(peek2_line, "ROX: ([0-9]+)")[2]
+    RED646_2 <- str_match(peek2_line, "RED646: ([0-9]+)")[2]
+    RED677_2 <- str_match(peek2_line, "RED677: ([0-9]+)")[2]
+    
+    # no peek lid scanned. SSW uses string of four zeroes for PEEK placeholder
+    if (FAM_1 == "0000" | FAM_2 == "0000") {
+      return(c("0", "0", "0", "0", "0"))
+    }
+    
+    # peek values should be the same 
+    if (c(FAM_1, HEX_1, ROX_1, RED646_1, RED677_1) == c(FAM_2, HEX_2, ROX_2, RED646_2, RED677_2)) {
+      return(c(FAM_1, HEX_1, ROX_1, trim.leading(RED646_1), RED677_1))
+    }
+    # but if they aren't who knows, most likely barcode scan but peek values still included in files
+    else {
+      # return(c(FAM_1, HEX_1, ROX_1, trim.leading(RED646_1), RED677_1))
+      return(c(paste(c(FAM_1, FAM_2), collapse=","), paste(c(HEX_1, HEX_2), collapse=","), paste(c(ROX_1, ROX_2), collapse=","), paste(c(trim.leading(RED646_1), trim.leading(RED646_1)), collapse=","), paste(c(RED677_1, RED677_2), collapse=",")))
+    }
   }
   
   VersionCheck <- function(input_PEEK, input_barcode, ZeroPadBarcode){
@@ -461,7 +505,7 @@ server <- function(input, output, session) {
       isPantherSN(TRUE) 
       showFeedbackSuccess("pantherSN", color = "#337ab7")
     }
-    else if (!grepl("^2090[0-9]{6}$", input$pantherSN)) {     
+    else if (!grepl("^209[0-9]{7}$", input$pantherSN) & !grepl("^912[0-9]{7}$", input$pantherSN)) {     
       hideFeedback("pantherSN")
       showFeedbackWarning(
         inputId = "pantherSN",
@@ -480,6 +524,11 @@ server <- function(input, output, session) {
     if (length(input$thermocyclerSN) == 0) {
       hideFeedback("thermocyclerSN")
       isThermocyclerSN(FALSE)
+    }
+    else if (input$thermocyclerSN == "NA") {
+      hideFeedback("thermocyclerSN")
+      isThermocyclerSN(TRUE) 
+      showFeedbackSuccess("thermocyclerSN", color = "#337ab7")
     }
     else if (!grepl("^J[0-9]{4}[A-Z][0-9]{2}[A-Z][0-9]$", input$thermocyclerSN)) { #eg J0001D16D0
       hideFeedback("thermocyclerSN")
@@ -504,6 +553,8 @@ server <- function(input, output, session) {
       showNotification("Peek Scan File detected.")
       updateTabsetPanel(session, "tabs", selected = "PEEK")
       isPeekFile(TRUE)
+      peekFilemd5(toString(tools::md5sum(input$peekFile[["datapath"]])))
+      alert(peekFilemd5())  
     }
     else if (is_bg) {
       alert("Background Scan File detected. Please upload a PEEK scan file.")
@@ -517,15 +568,28 @@ server <- function(input, output, session) {
     }
     
     barcodes <- get_barcodes(input$peekFile[["datapath"]])
-    updateNumericInput(session, "barcode1", value = barcodes[1])
-    updateNumericInput(session, "barcode2", value = barcodes[2])
+    peek <- get_peek_values(input$peekFile[["datapath"]])
     
     # Update lid presence option automatically based on barcode detection.
     if (length(barcodes) > 0) {
       updateRadioButtons(session, "lid", selected = TRUE)
+      reset("peek1")
+      reset("peek2")
+      reset("peek3")
+      reset("peek4")
+      reset("peek5")
+      updateNumericInput(session, "barcode1", value = barcodes[1])
+      updateNumericInput(session, "barcode2", value = barcodes[2])
     }
     else {
       updateRadioButtons(session, "lid", selected = FALSE)
+      reset("barcode1")
+      reset("barcode2")
+      updateNumericInput(session, "peek1", value = peek[1])
+      updateNumericInput(session, "peek2", value = peek[2])
+      updateNumericInput(session, "peek3", value = peek[3])
+      updateNumericInput(session, "peek4", value = peek[4])
+      updateNumericInput(session, "peek5", value = peek[5])
     }
   })
   
@@ -542,6 +606,8 @@ server <- function(input, output, session) {
       showNotification("Background Scan File detected.")
       updateTabsetPanel(session, "tabs", selected = "Background")
       isBackgroundFile(TRUE)
+      bgFilemd5(toString(tools::md5sum(input$bgFile[["datapath"]])))
+      alert(bgFilemd5())
     }
     else {
       alert("Unknown Scan File detected. Please upload correct scan file.")
@@ -671,6 +737,7 @@ server <- function(input, output, session) {
       conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
       conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
     }
+    
     filename <- "./reports/ThermocyclerDiagnosticReport.xlsx"
     
     if (file.exists(filename)) {
@@ -682,17 +749,24 @@ server <- function(input, output, session) {
     enable("download")
     # return(wb)
     updateTabsetPanel(session, "tabs", selected = "Summary")
+    
+    reset("bgFile")
+    isBackgroundFile(FALSE)
+    reset("peekFile")
+    isPeekFile(FALSE)
+    
+    disable("calculate")
   })
   
   # only enable calculate if both files uploaded correctly and SNs input in correct format
   observe({
     if (isPeekFile() && isBackgroundFile() && isThermocyclerSN() && isPantherSN()) {
       enable("calculate")
-      showFeedbackSuccess("calculate", color = "#337ab7")
+      # showFeedbackSuccess("calculate", color = "#337ab7")
     }
     else {
       disable("calculate")
-      hideFeedback("calculate")
+      # hideFeedback("calculate")
     }
     # req(input$peekFile, input$bgFile, isThermocyclerSN, isPantherSN)
     # enable("calculate")
