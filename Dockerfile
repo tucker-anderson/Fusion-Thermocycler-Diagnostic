@@ -31,6 +31,7 @@ RUN R -e "install.packages('shinyFeedback', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('stringr', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('plyr', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('openxlsx', repos='http://cran.rstudio.com/')"
+RUN R -e "install.packages('RPostgreSQL', repos='http://cran.rstudio.com/')"
 
 # copy the app to the image
 COPY ./app /srv/shiny-server/app
