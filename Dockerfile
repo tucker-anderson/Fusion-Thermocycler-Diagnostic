@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y \
     libcairo2-dev \
     libxt-dev \
     libssl-dev \
-    libssh2-1-dev
+    libssh2-1-dev \
+    libpq-dev
     # libprotobuf-dev \
     # libgeos-dev \
     # libjq-dev \
@@ -31,7 +32,7 @@ RUN R -e "install.packages('shinyFeedback', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('stringr', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('plyr', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('openxlsx', repos='http://cran.rstudio.com/')"
-RUN R -e "install.packages('RPostgreSQL', repos='http://cran.rstudio.com/')"
+RUN R -e "install.packages('RPostgreSQL', dependencies=TRUE, repos='http://cran.rstudio.com/')"
 
 # copy the app to the image
 COPY ./app /srv/shiny-server/app
