@@ -515,7 +515,7 @@ server <- function(input, output, session) {
       
       barcodes <- get_barcodes(input$peekFile[["datapath"]])
       peek <- get_peek_values(input$peekFile[["datapath"]])
-      browser()
+
       # Update lid presence option automatically based on barcode detection.
       if (length(barcodes) > 0) {
         updateRadioButtons(session, "lid", selected = TRUE)
