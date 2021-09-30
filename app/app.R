@@ -336,7 +336,7 @@ server <- function(input, output, session) {
   generate_data <- function(input) {
     skip <- str_which(readLines(input), ".*Bank No.*") - 1
     
-    data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip)
+    data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip, quote = "'")
     
     data_set <- data.frame(data_table$Color, data_table$Well.No, data_table$RFU)
     names(data_set) <- c("Dye", "Well", "RFU")
@@ -346,17 +346,9 @@ server <- function(input, output, session) {
   }
   
   generate_data_visual <- function(input, color, fun = c("mean", "max", "min", "sd")) {
-    
-    skip <- str_which(readLines(input), ".*Bank No.*") - 1
-    
-    data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip)
-    
-    data_set <- data.frame(data_table$Color, data_table$Well.No, data_table$RFU)
-    names(data_set) <- c("Dye", "Well", "RFU")
-    data_set <- data_set[order(data_set$Well) , ]
+    data_set <- generate_data(input)
     
     data_set <- data_set[data_set$Dye == color, ]
-    
     data_set$Bank <- floor((data_set$Well - 1) / 5) + 1
     data_set$Bank.Well <- (data_set$Well - 1) %% 5 + 1
     
@@ -523,7 +515,7 @@ server <- function(input, output, session) {
       
       barcodes <- get_barcodes(input$peekFile[["datapath"]])
       peek <- get_peek_values(input$peekFile[["datapath"]])
-      
+      browser()
       # Update lid presence option automatically based on barcode detection.
       if (length(barcodes) > 0) {
         updateRadioButtons(session, "lid", selected = TRUE)
@@ -612,7 +604,7 @@ server <- function(input, output, session) {
       output$peekTable <- renderTable(peek_visual)
     }
   })
-  
+
   observeEvent({input$tabs == input$Background
     input$bgColor
     input$bgAgg}, {
@@ -621,11 +613,11 @@ server <- function(input, output, session) {
         output$bgTable <- renderTable(bg_visual)
       }
     })
-  
+
   # peek_dataset <- eventReactive(input$calculate, {
   #   generate_data(input$peekFile[["datapath"]])
   # })
-  # 
+  #
   # bg_dataset <- eventReactive(input$calculate, {
   #   generate_data(input$bgFile[["datapath"]])
   # })
