@@ -268,13 +268,23 @@ ui <- fluidPage(
     normalized_medians <- medians
     # for each fluorometer color
     for (i in 1:5) {
-      #calculate percentages for fluorometer 1
-      normalized_wells[1:30, i + 1] = ((wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
-      normalized_medians[1,i + 1] = ((medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
-      
-      #calculate percentages for fluorometer 2
-      normalized_wells[31:60, i + 1] = ((wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
-      normalized_medians[2,i + 1] = ((medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
+      # handle if barcode / peek is zero for this fluorometer
+      if (vals1[i] == 0 || vals2[i] == 0) {
+        normalized_wells[1:30, i + 1] = 0
+        normalized_medians[1,i + 1] = 0
+        
+        normalized_wells[31:60, i + 1] = 0
+        normalized_medians[2,i + 1] = 0
+      }
+      else {
+        #calculate percentages for fluorometer 1
+        normalized_wells[1:30, i + 1] = ((wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
+        normalized_medians[1,i + 1] = ((medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
+        
+        #calculate percentages for fluorometer 2
+        normalized_wells[31:60, i + 1] = ((wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
+        normalized_medians[2,i + 1] = ((medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
+      }
     }
     
     normalized <- rbind.fill(list(normalized_medians, normalized_wells))
