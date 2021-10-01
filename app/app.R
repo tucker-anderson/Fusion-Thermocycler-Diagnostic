@@ -6,11 +6,13 @@ library("plyr")
 library("openxlsx")
 library("RPostgreSQL")
 
-# TODO make wb generation a function
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
 # TODO Make report and table output more clear
 # TODO Save report/data, SN and Thermocycler SN into backend database
+########################################################################################
 #----------------------------UI DEFINITIONS-----------------------------------------
+########################################################################################
+
 ui <- fluidPage(
   useShinyjs(),
   useShinyFeedback(),
@@ -74,9 +76,6 @@ ui <- fluidPage(
         )
       ),
         
-      # # Horizontal line
-      # tags$hr(),
-      
       # Input: Select a background file
       fileInput("bgFile", "Select Background Scan File",
                 width = "85%",
@@ -132,31 +131,55 @@ ui <- fluidPage(
   )
 )
 
-#----------------------------SERVER DEFINITIONS-----------------------------------------
-server <- function(input, output, session) {
-  isDatabase <- FALSE
-  
-  if (isDatabase) {
-    db <- 'tc_diagnostic'
-    host_db <- 'localhost'
-    db_port <- '5432'
-    db_user <- 'shiny_user'
-    db_password <- 'shiny'
+########################################################################################
+#----------------------------SERVER DEFINITION------------------------------------------
+########################################################################################
+
+  server <- function(input, output, session) {
+    isDatabase <- FALSE
     
-    con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
+    if (isDatabase) {
+      db <- 'tc_diagnostic'
+      host_db <- 'localhost'
+      db_port <- '5432'
+      db_user <- 'shiny_user'
+      db_password <- 'shiny'
+      
+      con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
+    }
+    
+    isPantherSN <- reactiveVal(FALSE)
+    isThermocyclerSN <- reactiveVal(FALSE)
+    isPeekFile <- reactiveVal(FALSE)
+    isBackgroundFile <- reactiveVal(FALSE)
+
+    peekFilemd5 <- reactiveVal("")
+    bgFilemd5 <- reactiveVal("")
+  
+########################################################################################
+#----------------------------FUNCTION DEFINITIONS---------------------------------------
+########################################################################################
+
+  ######################################################################################
+  # function to extract data frame from SSW scan files
+  # parameter is SSW scan file 
+  # return a data frame of extracted data
+  generate_data <- function(input) {
+    skip <- str_which(readLines(input), ".*Bank No.*") - 1
+    
+    data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip, quote = "'")
+    
+    data_set <- data.frame(data_table$Color, data_table$Well.No, data_table$RFU)
+    names(data_set) <- c("Dye", "Well", "RFU")
+    data_set <- data_set[order(data_set$Well) , ]
+    
+    return(data_set)
   }
   
-  isPantherSN <- reactiveVal(FALSE)
-  isThermocyclerSN <- reactiveVal(FALSE)
-  isPeekFile <- reactiveVal(FALSE)
-  isBackgroundFile <- reactiveVal(FALSE)
-
-  peekFilemd5 <- reactiveVal("")
-  bgFilemd5 <- reactiveVal("")
-  
-  
-  #----------------------------FUNCTION DEFINITIONS-----------------------------------------
-  ###defining a function to take in a single file and return the averaged fluorescence per well###
+  ######################################################################################
+  # function to take in scan file data from ssw
+  # parameter is extracted well data (from generate_data function)
+  # return the average of each fluorometer color in a data frame
   average_wells <- function(well_data){
     well_data <- well_data[order(well_data$Dye) , ]
     
@@ -186,8 +209,11 @@ server <- function(input, output, session) {
     
     return(stats)
   }
-  
-  ###defining a function to take in a single file and return the median of each fluorometer###
+
+  ######################################################################################
+  # function to take in scan file data from ssw
+  # parameter is extracted well data (from generate_data function)
+  # return the median of each fluorometer color in a data frame
   fluorometer_med <- function(stats){
     flurometer1 = stats[1:30,]
     FAM_median = median(flurometer1$`FAM Mean`)
@@ -213,35 +239,38 @@ server <- function(input, output, session) {
     names(label) = "Fluorometer"
     
     medians = data.frame(label,medians)
+
     return(medians)
-    
   }
   
+  ######################################################################################
+  # Function to take in a PEEK barcode, as a single string
+  # parameter is single string from peek lid barcode
+  # return expected values for PEEK sheet as a vector of ints for each color
   read_barcode <- function(barcode){
-    ## takes in a barcode, as a string, and returns expected values for PEEK sheet ##
-    #FAM = as.numeric(substr(barcode, 3,6)) * 10
     FAM <- as.numeric(substr(format(barcode, scientific = FALSE), 3, 6)) * 10
-    #HEX = as.numeric(substr(barcode, 7,11))
     HEX <- as.numeric(substr(format(barcode, scientific = FALSE), 7, 10))
-    #ROX = as.numeric(substr(barcode, 12,15))
     ROX <- as.numeric(substr(format(barcode, scientific = FALSE), 11, 14))
-    #RED647 = as.numeric(substr(barcode, 17,19))
-    #RED647 = as.numeric(substr(barcode, 16,19))
     RED647 <- as.numeric(substr(format(barcode, scientific = FALSE), 15, 18))
-    #RED677 = as.numeric(substr(barcode, 20,23))
     RED677 <- as.numeric(substr(format(barcode, scientific = FALSE), 19, 22))
     
     expected_vals = c(FAM, HEX,ROX, RED647, RED677)
+
     return(expected_vals)
   }
   
+  ######################################################################################
+  # Function to calculate percent delta between peek calibration values and bg subtracted peek scan
+  # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
+  # return percent difference between peek and bg sub peek scan wells as a list
   check_vals <- function(vals1, vals2, background_sub_wells, background_sub_medians){
+    # for each fluorometer color
     for (i in 1:5) {
-      #calculate percentages for fluormeter 1
+      #calculate percentages for fluorometer 1
       background_sub_wells[1:30, i + 1] = ((background_sub_wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
       background_sub_medians[1,i + 1] = ((background_sub_medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
       
-      #calculate percentages for fluormeter 2
+      #calculate percentages for fluorometer 2
       background_sub_wells[31:60, i + 1] = ((background_sub_wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
       background_sub_medians[2,i + 1] = ((background_sub_medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
     }
@@ -251,7 +280,11 @@ server <- function(input, output, session) {
     
     return(percent_diff)
   }
-  
+
+  ######################################################################################
+  # Function to check SSW scan filetype
+  # parameters are scan file, and string of scan type (same as displayed in file)
+  # return boolean of if input type matches detected scan file type 
   check_filetype <- function(input_scan, input_type) {
     input_line <- readLines(input_scan, n = 1)
     scan_line <- str_subset(input_line, "Scan")
@@ -266,14 +299,19 @@ server <- function(input, output, session) {
     }
   }
   
-  ###attempt to get barcodes from PEEK input file. If they cannot be found, return empty vector
+  ######################################################################################
+  # Function to attempt to get barcodes from PEEK input file
+  # parameter is peek SSW scan file
+  # return barcodes as vector of strings. If they cannot be found, return empty vector
   get_barcodes <- function(input_PEEK){
     input_lines <- readLines(input_PEEK)
     barcode_lines <- str_subset(input_lines, "Barcode")
+
     #No barcodes in file
     if (length(barcode_lines) == 0) {
       return(vector())
     }
+
     barcodes <- str_extract(barcode_lines, "[0-9]{22,}")
     barcode_1 <- barcodes[1]
     barcode_2 <- barcodes[2]
@@ -285,10 +323,13 @@ server <- function(input, output, session) {
     if (nchar(barcode_2) == 23) {
       barcode_2 <- paste0(str_sub(barcode_2,1,6), str_sub(barcode_2,8))
     } 
-    
     return(c(barcode_1, barcode_2))
   }
   
+  ######################################################################################
+  # Function to attempt to get manual peek lid values from PEEK input file
+  # parameter is peek SSW scan file
+  # return peek lid values as vector of strings. If they cannot be found, return empty vector
   get_peek_values <- function(input_PEEK){
     input_lines <- readLines(input_PEEK)
     peek_lines <- str_subset(input_lines, "Peek.*Fluorometer")
@@ -325,18 +366,10 @@ server <- function(input, output, session) {
     }
   }
   
-  generate_data <- function(input) {
-    skip <- str_which(readLines(input), ".*Bank No.*") - 1
-    
-    data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip, quote = "'")
-    
-    data_set <- data.frame(data_table$Color, data_table$Well.No, data_table$RFU)
-    names(data_set) <- c("Dye", "Well", "RFU")
-    data_set <- data_set[order(data_set$Well) , ]
-    
-    return(data_set)
-  }
-  
+  ######################################################################################
+  # function to extract data frame from SSW scan files, return shaped differently than generate_data function
+  # parameter is SSW scan file 
+  # return a data frame of extracted data
   generate_data_visual <- function(input, color, fun = c("mean", "max", "min", "sd")) {
     data_set <- generate_data(input)
     
@@ -382,7 +415,12 @@ server <- function(input, output, session) {
     return(data_reshaped)
   }
 
+  ######################################################################################
+  # Function to generate excel workbook with summary of peek and bg scans
+  # parameters are input from shiny UI (peek file, bg file, barcodes, peek, if lid is present) 
+  # return excel spreadsheet
   generate_workbook <- function(input_peek, input_bg, barcodes, peek_values, is_lid) {
+    #first perform some calculations
     peek_dataset <- generate_data(input_peek[["datapath"]])
     peek_wells <- average_wells(peek_dataset)
     peek_medians <- fluorometer_med(peek_wells)
@@ -406,12 +444,6 @@ server <- function(input, output, session) {
     percent_diff_30_subtracted <- check_vals(vals1, vals2, bg_sub_wells, bg_sub_medians)
     percent_diff_30 <- check_vals(vals1, vals2, peek_wells, peek_medians)
     
-    # list <- list(bg_medians, bg_wells) #combine both into a list
-    # background <- do.call(rbind.fill, list) #bind them
-
-    # list <- list(peek_medians, peek_wells) #combine both into a list
-    # peek <- do.call(rbind.fill, list) #bind them
-
     peek <- rbind.fill(list(peek_medians, peek_wells))
     background <- rbind.fill(list(bg_medians, bg_wells)) 
     bg_sub <- rbind.fill(list(bg_sub_medians, bg_sub_wells))
@@ -462,22 +494,33 @@ server <- function(input, output, session) {
       conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
       conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
     }
-
     return(wb)
   }
 
+  ######################################################################################
+  # Function to update database with Panther SN
+  # parameters are database connection and Panther SN as string 
+  # return nothing
   update_database_panther_sn <- function(conn, pantherSN) {
     dbSendQuery(conn, paste0("INSERT INTO public.panther_info (panther_sn) VALUES ('", pantherSN, "') ON CONFLICT (panther_sn) DO NOTHING"))
   }
   
+  ######################################################################################
+  # Function to update database with Fusion SN
+  # parameters are database connection and Fusion SN as string 
+  # return nothing
   update_database_tc_sn <- function(conn, tcSN) {
     #ensure input is all uppercase to avoid casing conflicts in database
     tcSN <- toupper(tcSN)
     dbSendQuery(conn, paste0("INSERT INTO public.tc_info (tc_sn) VALUES ('", tcSN, "') ON CONFLICT (tc_sn) DO NOTHING"))
   }
-  #----------------------------EVENT OBSERVERS-----------------------------------------
-  
-  # Event Observers for lid presence. Disable numeric fields if no lid selected.
+
+########################################################################################
+#---------------------------------EVENT OBSERVERS---------------------------------------
+########################################################################################
+
+  ######################################################################################
+  # Event Observers for lid presence. Disable numeric fields if no lid selected
   observe({
     if (input$lid == TRUE) {
       disable("peek1")
@@ -499,6 +542,7 @@ server <- function(input, output, session) {
     }
   })
   
+  ######################################################################################
   # Event observers for SN text input
   observeEvent(input$pantherSN, {
     if (length(input$pantherSN) == 0) {
@@ -550,7 +594,9 @@ server <- function(input, output, session) {
     }
   })
   
-  # Event Observers for PEEK File upload. Attempt to verify that file is a PEEK scan and not background and populate barcodes etc.
+  ######################################################################################
+  # Event Observers for PEEK File upload
+  # Attempt to verify that file is a PEEK scan and not background and populate barcodes etc.
   observeEvent(input$peekFile, {
     is_peek <- check_filetype(input$peekFile[["datapath"]], "Peek Lid Scan")
     is_bg <- check_filetype(input$peekFile[["datapath"]], "Background Scan")
@@ -616,6 +662,7 @@ server <- function(input, output, session) {
     
   })
   
+  # Attempt to verify that file is a background scan and not peek
   observeEvent(input$bgFile, {
     is_peek <- check_filetype(input$bgFile[["datapath"]], "Peek Lid Scan")
     is_bg <- check_filetype(input$bgFile[["datapath"]], "Background Scan")
@@ -638,7 +685,10 @@ server <- function(input, output, session) {
       isBackgroundFile(FALSE)
     }
   })
-  
+
+  ######################################################################################
+  # Event Observers for tab navigation
+  # when navigated to, some data should be calculated/displayed
   observeEvent({input$tabs == input$PEEK
     input$peekColor
     input$peekAgg}, {
@@ -657,97 +707,9 @@ server <- function(input, output, session) {
       }
     })
 
+  ######################################################################################
+  # Event Observers for diagnostic calculation and download
   observeEvent(input$calculate, {
-    # peek_dataset <- generate_data(input$peekFile[["datapath"]])
-    # peek_wells <- average_wells(peek_dataset)
-    # peek_medians <- fluorometer_med(peek_wells)
-    # # output$peekTable <- renderTable(peek_dataset)
-    # 
-    # bg_dataset <- generate_data(input$bgFile[["datapath"]])
-    # bg_wells <- average_wells(bg_dataset)
-    # bg_medians <- fluorometer_med(bg_wells)
-    # # output$bgTable <- renderTable(bg_dataset)
-    # 
-    # bg_sub_wells = data.frame( c(1:60), (peek_wells[,2:6] - bg_wells[,2:6])) 
-    # names(bg_sub_wells) <- c("Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")
-    # bg_sub_medians = fluorometer_med(bg_sub_wells)
-    # 
-    # if (input$lid == TRUE) {
-    #   vals1 <- read_barcode(input$barcode1)
-    #   vals2 <- read_barcode(input$barcode2)
-    # }
-    # else {
-    #   vals1 <- as.numeric(c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5))
-    #   vals2 <- as.numeric(c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5))
-    # }
-    # percent_diff_30_subtracted <- check_vals(vals1, vals2, bg_sub_wells, bg_sub_medians)
-    # percent_diff_30 <- check_vals(vals1, vals2, peek_wells, peek_medians)
-    # 
-    # list <- list(bg_medians, bg_wells) #combine both into a list
-    # background <- do.call(rbind.fill, list) #bind them
-    # 
-    # list <- list(peek_medians, peek_wells) #combine both into a list
-    # peek <- do.call(rbind.fill, list) #bind them
-    # 
-    # #generate workbook
-    # wb <- createWorkbook()
-    # addWorksheet(wb, "Raw PEEK")
-    # 
-    # if (input$lid == FALSE) { 
-    #   addWorksheet(wb, "Raw Background") 
-    # }
-    # 
-    # addWorksheet(wb, "Percent Diff")
-    # 
-    # if (input$lid == FALSE) { 
-    #   addWorksheet(wb, "Percent Diff Subtracted") 
-    # }
-    # 
-    # addWorksheet(wb, "Barcodes")
-    # 
-    # writeData(wb, "Raw PEEK", peek, startCol = 1, startRow = 1, xy = NULL,
-    #           colNames = TRUE, rowNames = FALSE)
-    # 
-    # if (input$lid == FALSE) {
-    #   writeData(wb, "Raw Background", background, startCol = 1, startRow = 1, xy = NULL,
-    #             colNames = TRUE, rowNames = FALSE)
-    # }
-    # 
-    # writeData(wb,  "Percent Diff", percent_diff_30, startCol = 1, startRow = 1, xy = NULL,
-    #           colNames = TRUE, rowNames = FALSE)
-    # 
-    # if (input$lid == FALSE) {
-    #   writeData(wb, "Percent Diff Subtracted", percent_diff_30_subtracted, startCol = 1, startRow = 1, xy = NULL,
-    #             colNames = TRUE, rowNames = FALSE)
-    # }
-    # 
-    # 
-    # barcode_label = c('LED Color', 'FAM', 'HEX', 'ROX', 'RED647', 'RED677')
-    # 
-    # writeData(wb, "Barcodes", barcode_label, startCol = 1, startRow = 1, xy = NULL,
-    #           colNames = TRUE, rowNames = FALSE)
-    # writeData(wb, "Barcodes", 'Barcode 1', startCol = 2, startRow = 1, xy = NULL,
-    #           colNames = TRUE, rowNames = FALSE)
-    # writeData(wb, "Barcodes", 'Barcode 2', startCol = 3, startRow = 1, xy = NULL,
-    #           colNames = TRUE, rowNames = FALSE)
-    # writeData(wb, "Barcodes", vals1, startCol = 2, startRow = 2, xy = NULL,
-    #           colNames = TRUE, rowNames = FALSE)
-    # writeData(wb, "Barcodes", vals2, startCol = 3, startRow = 2, xy = NULL,
-    #           colNames = TRUE, rowNames = FALSE)
-    # 
-    # conditionalFormatting(wb, "Percent Diff",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
-    # conditionalFormatting(wb, "Percent Diff", 2:6, 2:3, rule = "<=-30", style = NULL)
-    # 
-    # conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = ">=30", style = NULL)
-    # conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = "<=-30", style = NULL)
-    # 
-    # if (input$lid == FALSE) {
-    #   conditionalFormatting(wb, "Percent Diff Subtracted",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
-    #   conditionalFormatting(wb, "Percent Diff Subtracted", 2:6, 2:3, rule = "<=-30", style = NULL)
-    #   
-    #   conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
-    #   conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
-    # }
     wb <- generate_workbook(input$peekFile, input$bgFile,
                             c(input$barcode1, input$barcode2),
                             c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
@@ -777,7 +739,7 @@ server <- function(input, output, session) {
     }
   })
   
-  # only enable calculate if both files uploaded correctly and SNs input in correct format
+  # only enable calculate if both files uploaded correctly & SNs input in correct format
   observe({
     if (isPeekFile() && isBackgroundFile() && isThermocyclerSN() && isPantherSN()) {
       enable("calculate")
@@ -787,6 +749,10 @@ server <- function(input, output, session) {
     }
   })
   
+########################################################################################
+#------------------------------OUTPUT DEFINITIONS---------------------------------------
+########################################################################################
+  # download button to extract xlsx diagnostic file from server
   output$download <- downloadHandler(
       filename = function() {
         paste("ThermocyclerDiagnosticReport.xlsx", ".xlsx", sep = "")
@@ -795,9 +761,6 @@ server <- function(input, output, session) {
         file.copy("./reports/ThermocyclerDiagnosticReport.xlsx", file)
       }
   )
-  
-  #----------------------------OUTPUT
-  # output$peekTable <- renderTable(peek_dataset)
 }
 
 shinyApp(ui = ui, server = server)
