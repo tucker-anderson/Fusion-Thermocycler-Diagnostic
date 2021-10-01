@@ -260,25 +260,26 @@ ui <- fluidPage(
   }
   
   ######################################################################################
-  # Function to calculate percent delta between peek calibration values and bg subtracted peek scan
+  # Function to calculate percent delta between peek calibration values and bg subtracted peek scan and normalize against this value
   # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
   # return percent difference between peek and bg sub peek scan wells as a list
-  check_vals <- function(vals1, vals2, background_sub_wells, background_sub_medians){
+  val_norm <- function(vals1, vals2, wells, medians){
+    normalized_wells <- wells
+    normalized_medians <- medians
     # for each fluorometer color
     for (i in 1:5) {
       #calculate percentages for fluorometer 1
-      background_sub_wells[1:30, i + 1] = ((background_sub_wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
-      background_sub_medians[1,i + 1] = ((background_sub_medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
+      normalized_wells[1:30, i + 1] = ((wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
+      normalized_medians[1,i + 1] = ((medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
       
       #calculate percentages for fluorometer 2
-      background_sub_wells[31:60, i + 1] = ((background_sub_wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
-      background_sub_medians[2,i + 1] = ((background_sub_medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
+      normalized_wells[31:60, i + 1] = ((wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
+      normalized_medians[2,i + 1] = ((medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
     }
     
-    list <- list(background_sub_medians, background_sub_wells) #combine both into a list
-    percent_diff <- do.call(rbind.fill, list) #bind them
+    normalized <- rbind.fill(list(normalized_medians, normalized_wells))
     
-    return(percent_diff)
+    return(normalized)
   }
 
   ######################################################################################
@@ -441,8 +442,8 @@ ui <- fluidPage(
       vals1 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
       vals2 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
     }
-    percent_diff_30_subtracted <- check_vals(vals1, vals2, bg_sub_wells, bg_sub_medians)
-    percent_diff_30 <- check_vals(vals1, vals2, peek_wells, peek_medians)
+    percent_diff_30_subtracted <- val_norm(vals1, vals2, bg_sub_wells, bg_sub_medians)
+    percent_diff_30 <- val_norm(vals1, vals2, peek_wells, peek_medians)
     
     peek <- rbind.fill(list(peek_medians, peek_wells))
     background <- rbind.fill(list(bg_medians, bg_wells)) 
@@ -467,7 +468,7 @@ ui <- fluidPage(
               colNames = TRUE, rowNames = FALSE)
     writeData(wb, "Percent Diff Subtracted", percent_diff_30_subtracted, startCol = 1, startRow = 1, xy = NULL,
                 colNames = TRUE, rowNames = FALSE)
-    
+
     barcode_label = c('LED Color', 'FAM', 'HEX', 'ROX', 'RED647', 'RED677')
     
     writeData(wb, "Barcodes", barcode_label, startCol = 1, startRow = 1, xy = NULL,
@@ -498,7 +499,7 @@ ui <- fluidPage(
   }
 
   ######################################################################################
-  # Function to update database with Panther SN
+  # function to update database with Panther SN
   # parameters are database connection and Panther SN as string 
   # return nothing
   update_database_panther_sn <- function(conn, pantherSN) {
@@ -752,6 +753,7 @@ ui <- fluidPage(
 ########################################################################################
 #------------------------------OUTPUT DEFINITIONS---------------------------------------
 ########################################################################################
+
   # download button to extract xlsx diagnostic file from server
   output$download <- downloadHandler(
       filename = function() {
