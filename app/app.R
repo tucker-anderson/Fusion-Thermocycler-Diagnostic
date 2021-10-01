@@ -157,11 +157,7 @@ server <- function(input, output, session) {
   
   #----------------------------FUNCTION DEFINITIONS-----------------------------------------
   ###defining a function to take in a single file and return the averaged fluorescence per well###
-  # Returns string without leading white space
-  trim.leading <- function(x)  sub("^\\s+", "", x)
-  
   average_wells <- function(well_data){
-    
     well_data <- well_data[order(well_data$Dye) , ]
     
     FAM <- subset(well_data, Dye == 0) 
@@ -201,8 +197,7 @@ server <- function(input, output, session) {
     RED677_median = median(flurometer1$`RED 677 Mean`)
     
     fluorometer1 = data.frame(FAM_median,HEX_median,ROX_median,RED647_median,RED677_median)
-    
-    
+
     flurometer2 = stats[31:60,]
     FAM_median = median(flurometer2$`FAM Mean`)
     HEX_median = median(flurometer2$`HEX Mean`)
@@ -238,7 +233,6 @@ server <- function(input, output, session) {
     
     expected_vals = c(FAM, HEX,ROX, RED647, RED677)
     return(expected_vals)
-    
   }
   
   check_vals <- function(vals1, vals2, background_sub_wells, background_sub_medians){
@@ -327,8 +321,6 @@ server <- function(input, output, session) {
     }
     # but if they aren't who knows, most likely barcode scan but peek values still included in files
     else {
-      # return(c(FAM_1, HEX_1, ROX_1, trim.leading(RED646_1), RED677_1))
-      # return(c(paste(c(FAM_1, FAM_2), collapse = ","), paste(c(HEX_1, HEX_2), collapse = ","), paste(c(ROX_1, ROX_2), collapse = ","), paste(c(trim.leading(RED646_1), trim.leading(RED646_1)), collapse = ","), paste(c(RED677_1, RED677_2), collapse = ","), "PEEK Lid data included in scan file does not match between fluorometers, please manually update."))
       return(c(FAM_1, HEX_1, ROX_1, RED646_1, RED677_1, "PEEK Lid data included in scan file does not match between fluorometers, please manually update."))
     }
   }
@@ -389,7 +381,91 @@ server <- function(input, output, session) {
     }
     return(data_reshaped)
   }
-  
+
+  generate_workbook <- function(input_peek, input_bg, barcodes, peek_values, is_lid) {
+    peek_dataset <- generate_data(input_peek[["datapath"]])
+    peek_wells <- average_wells(peek_dataset)
+    peek_medians <- fluorometer_med(peek_wells)
+    
+    bg_dataset <- generate_data(input_bg[["datapath"]])
+    bg_wells <- average_wells(bg_dataset)
+    bg_medians <- fluorometer_med(bg_wells)
+
+    bg_sub_wells = data.frame(c(1:60), (peek_wells[,2:6] - bg_wells[,2:6])) 
+    names(bg_sub_wells) <- c("Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")
+    bg_sub_medians = fluorometer_med(bg_sub_wells)
+    
+    if (is_lid == TRUE) {
+      vals1 <- read_barcode(barcodes[1])
+      vals2 <- read_barcode(barcodes[2])
+    }
+    else {
+      vals1 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+      vals2 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+    }
+    percent_diff_30_subtracted <- check_vals(vals1, vals2, bg_sub_wells, bg_sub_medians)
+    percent_diff_30 <- check_vals(vals1, vals2, peek_wells, peek_medians)
+    
+    # list <- list(bg_medians, bg_wells) #combine both into a list
+    # background <- do.call(rbind.fill, list) #bind them
+
+    # list <- list(peek_medians, peek_wells) #combine both into a list
+    # peek <- do.call(rbind.fill, list) #bind them
+
+    peek <- rbind.fill(list(peek_medians, peek_wells))
+    background <- rbind.fill(list(bg_medians, bg_wells)) 
+    bg_sub <- rbind.fill(list(bg_sub_medians, bg_sub_wells))
+    
+    #generate workbook
+    wb <- createWorkbook()
+    addWorksheet(wb, "Raw PEEK")
+    addWorksheet(wb, "Raw Background") 
+    addWorksheet(wb, "Background Subtracted")
+    addWorksheet(wb, "Percent Diff")
+    addWorksheet(wb, "Percent Diff Subtracted") 
+    addWorksheet(wb, "Barcodes")
+    
+    writeData(wb, "Raw PEEK", peek, startCol = 1, startRow = 1, xy = NULL,
+              colNames = TRUE, rowNames = FALSE)
+    writeData(wb, "Raw Background", background, startCol = 1, startRow = 1, xy = NULL,
+                colNames = TRUE, rowNames = FALSE)
+    writeData(wb, "Background Subtracted", bg_sub, startCol = 1, startRow = 1, xy = NULL,
+                colNames = TRUE, rowNames = FALSE)
+    writeData(wb,  "Percent Diff", percent_diff_30, startCol = 1, startRow = 1, xy = NULL,
+              colNames = TRUE, rowNames = FALSE)
+    writeData(wb, "Percent Diff Subtracted", percent_diff_30_subtracted, startCol = 1, startRow = 1, xy = NULL,
+                colNames = TRUE, rowNames = FALSE)
+    
+    barcode_label = c('LED Color', 'FAM', 'HEX', 'ROX', 'RED647', 'RED677')
+    
+    writeData(wb, "Barcodes", barcode_label, startCol = 1, startRow = 1, xy = NULL,
+              colNames = TRUE, rowNames = FALSE)
+    writeData(wb, "Barcodes", 'Barcode 1', startCol = 2, startRow = 1, xy = NULL,
+              colNames = TRUE, rowNames = FALSE)
+    writeData(wb, "Barcodes", 'Barcode 2', startCol = 3, startRow = 1, xy = NULL,
+              colNames = TRUE, rowNames = FALSE)
+    writeData(wb, "Barcodes", vals1, startCol = 2, startRow = 2, xy = NULL,
+              colNames = TRUE, rowNames = FALSE)
+    writeData(wb, "Barcodes", vals2, startCol = 3, startRow = 2, xy = NULL,
+              colNames = TRUE, rowNames = FALSE)
+    
+    conditionalFormatting(wb, "Percent Diff",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
+    conditionalFormatting(wb, "Percent Diff", 2:6, 2:3, rule = "<=-30", style = NULL)
+    
+    conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = ">=30", style = NULL)
+    conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = "<=-30", style = NULL)
+    
+    if (is_lid == FALSE) {
+      conditionalFormatting(wb, "Percent Diff Subtracted",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
+      conditionalFormatting(wb, "Percent Diff Subtracted", 2:6, 2:3, rule = "<=-30", style = NULL)
+      
+      conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
+      conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
+    }
+
+    return(wb)
+  }
+
   update_database_panther_sn <- function(conn, pantherSN) {
     dbSendQuery(conn, paste0("INSERT INTO public.panther_info (panther_sn) VALUES ('", pantherSN, "') ON CONFLICT (panther_sn) DO NOTHING"))
   }
@@ -411,20 +487,6 @@ server <- function(input, output, session) {
       disable("peek5")
       enable("barcode1")
       enable("barcode2")
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek1').prop('disabled',true)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek2').prop('disabled',true)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek3').prop('disabled',true)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek4').prop('disabled',true)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek5').prop('disabled',true)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#barcode1').prop('disabled',false)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#barcode2').prop('disabled',false)"))
-      # shinyjs::hide("barcode1")
-      # shinyjs::hide("barcode2")
-      # shinyjs::hide("peek1")
-      # shinyjs::hide("peek2")
-      # shinyjs::hide("peek3")
-      # shinyjs::hide("peek4")
-      # shinyjs::hide("peek5")
     }                               
     else {
       enable("peek1")
@@ -434,20 +496,6 @@ server <- function(input, output, session) {
       enable("peek5")
       disable("barcode1")
       disable("barcode2")
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek1').prop('disabled',false)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek2').prop('disabled',false)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek3').prop('disabled',false)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek4').prop('disabled',false)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#peek5').prop('disabled',false)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#barcode1').prop('disabled',true)"))
-      # session$sendCustomMessage(type = "jsCode", list(code = "$('#barcode2').prop('disabled',true)"))
-      # shinyjs::show("barcode1")
-      # shinyjs::show("barcode2")
-      # shinyjs::show("peek1")
-      # shinyjs::show("peek2")
-      # shinyjs::show("peek3")
-      # shinyjs::show("peek4")
-      # shinyjs::show("peek5")
     }
   })
   
@@ -519,11 +567,6 @@ server <- function(input, output, session) {
       # Update lid presence option automatically based on barcode detection.
       if (length(barcodes) > 0) {
         updateRadioButtons(session, "lid", selected = TRUE)
-        # reset("peek1")
-        # reset("peek2")
-        # reset("peek3")
-        # reset("peek4")
-        # reset("peek5")
         updateNumericInput(session, "barcode1", value = barcodes[1])
         updateNumericInput(session, "barcode2", value = barcodes[2])
         #if peek values are also provided in file, then also put them in fields
@@ -614,108 +657,101 @@ server <- function(input, output, session) {
       }
     })
 
-  # peek_dataset <- eventReactive(input$calculate, {
-  #   generate_data(input$peekFile[["datapath"]])
-  # })
-  #
-  # bg_dataset <- eventReactive(input$calculate, {
-  #   generate_data(input$bgFile[["datapath"]])
-  # })
-  
-  # workbook <- 
   observeEvent(input$calculate, {
-    peek_dataset <- generate_data(input$peekFile[["datapath"]])
-    peek_wells <- average_wells(peek_dataset)
-    peek_medians <- fluorometer_med(peek_wells)
-    # output$peekTable <- renderTable(peek_dataset)
-    
-
-    bg_dataset <- generate_data(input$bgFile[["datapath"]])
-    bg_wells <- average_wells(bg_dataset)
-    bg_medians <- fluorometer_med(bg_wells)
-    # output$bgTable <- renderTable(bg_dataset)
-    
-    bg_sub_wells = data.frame( c(1:60), (peek_wells[,2:6] - bg_wells[,2:6])) 
-    names(bg_sub_wells) <- c("Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")
-    bg_sub_medians = fluorometer_med(bg_sub_wells)
-    
-    if (input$lid == TRUE) {
-      vals1 <- read_barcode(input$barcode1)
-      vals2 <- read_barcode(input$barcode2)
-    }
-    else {
-      vals1 <- as.numeric(c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5))
-      vals2 <- as.numeric(c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5))
-    }
-    percent_diff_30_subtracted <- check_vals(vals1, vals2, bg_sub_wells, bg_sub_medians)
-    percent_diff_30 <- check_vals(vals1, vals2, peek_wells, peek_medians)
-    
-    list <- list(bg_medians, bg_wells) #combine both into a list
-    background <- do.call(rbind.fill, list) #bind them
-
-    list <- list(peek_medians, peek_wells) #combine both into a list
-    peek <- do.call(rbind.fill, list) #bind them
-    
-    #generate workbook
-    wb <- createWorkbook()
-    addWorksheet(wb, "Raw PEEK")
-    
-    if (input$lid == FALSE) { 
-      addWorksheet(wb, "Raw Background") 
-    }
-    
-    addWorksheet(wb, "Percent Diff")
-    
-    if (input$lid == FALSE) { 
-      addWorksheet(wb, "Percent Diff Subtracted") 
-    }
-    
-    addWorksheet(wb, "Barcodes")
-    
-    
-    writeData(wb, "Raw PEEK", peek, startCol = 1, startRow = 1, xy = NULL,
-              colNames = TRUE, rowNames = FALSE)
-    
-    if (input$lid == FALSE) {
-      writeData(wb, "Raw Background", background, startCol = 1, startRow = 1, xy = NULL,
-                colNames = TRUE, rowNames = FALSE)
-    }
-    
-    writeData(wb,  "Percent Diff", percent_diff_30, startCol = 1, startRow = 1, xy = NULL,
-              colNames = TRUE, rowNames = FALSE)
-    
-    if (input$lid == FALSE) {
-      writeData(wb, "Percent Diff Subtracted", percent_diff_30_subtracted, startCol = 1, startRow = 1, xy = NULL,
-                colNames = TRUE, rowNames = FALSE)
-    }
-    
-    
-    barcode_label = c('LED Color', 'FAM', 'HEX', 'ROX', 'RED647', 'RED677')
-    
-    writeData(wb, "Barcodes", barcode_label, startCol = 1, startRow = 1, xy = NULL,
-              colNames = TRUE, rowNames = FALSE)
-    writeData(wb, "Barcodes", 'Barcode 1', startCol = 2, startRow = 1, xy = NULL,
-              colNames = TRUE, rowNames = FALSE)
-    writeData(wb, "Barcodes", 'Barcode 2', startCol = 3, startRow = 1, xy = NULL,
-              colNames = TRUE, rowNames = FALSE)
-    writeData(wb, "Barcodes", vals1, startCol = 2, startRow = 2, xy = NULL,
-              colNames = TRUE, rowNames = FALSE)
-    writeData(wb, "Barcodes", vals2, startCol = 3, startRow = 2, xy = NULL,
-              colNames = TRUE, rowNames = FALSE)
-    
-    conditionalFormatting(wb, "Percent Diff",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
-    conditionalFormatting(wb, "Percent Diff", 2:6, 2:3, rule = "<=-30", style = NULL)
-    
-    conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = ">=30", style = NULL)
-    conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = "<=-30", style = NULL)
-    
-    if (input$lid == FALSE) {
-      conditionalFormatting(wb, "Percent Diff Subtracted",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
-      conditionalFormatting(wb, "Percent Diff Subtracted", 2:6, 2:3, rule = "<=-30", style = NULL)
-      
-      conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
-      conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
-    }
+    # peek_dataset <- generate_data(input$peekFile[["datapath"]])
+    # peek_wells <- average_wells(peek_dataset)
+    # peek_medians <- fluorometer_med(peek_wells)
+    # # output$peekTable <- renderTable(peek_dataset)
+    # 
+    # bg_dataset <- generate_data(input$bgFile[["datapath"]])
+    # bg_wells <- average_wells(bg_dataset)
+    # bg_medians <- fluorometer_med(bg_wells)
+    # # output$bgTable <- renderTable(bg_dataset)
+    # 
+    # bg_sub_wells = data.frame( c(1:60), (peek_wells[,2:6] - bg_wells[,2:6])) 
+    # names(bg_sub_wells) <- c("Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")
+    # bg_sub_medians = fluorometer_med(bg_sub_wells)
+    # 
+    # if (input$lid == TRUE) {
+    #   vals1 <- read_barcode(input$barcode1)
+    #   vals2 <- read_barcode(input$barcode2)
+    # }
+    # else {
+    #   vals1 <- as.numeric(c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5))
+    #   vals2 <- as.numeric(c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5))
+    # }
+    # percent_diff_30_subtracted <- check_vals(vals1, vals2, bg_sub_wells, bg_sub_medians)
+    # percent_diff_30 <- check_vals(vals1, vals2, peek_wells, peek_medians)
+    # 
+    # list <- list(bg_medians, bg_wells) #combine both into a list
+    # background <- do.call(rbind.fill, list) #bind them
+    # 
+    # list <- list(peek_medians, peek_wells) #combine both into a list
+    # peek <- do.call(rbind.fill, list) #bind them
+    # 
+    # #generate workbook
+    # wb <- createWorkbook()
+    # addWorksheet(wb, "Raw PEEK")
+    # 
+    # if (input$lid == FALSE) { 
+    #   addWorksheet(wb, "Raw Background") 
+    # }
+    # 
+    # addWorksheet(wb, "Percent Diff")
+    # 
+    # if (input$lid == FALSE) { 
+    #   addWorksheet(wb, "Percent Diff Subtracted") 
+    # }
+    # 
+    # addWorksheet(wb, "Barcodes")
+    # 
+    # writeData(wb, "Raw PEEK", peek, startCol = 1, startRow = 1, xy = NULL,
+    #           colNames = TRUE, rowNames = FALSE)
+    # 
+    # if (input$lid == FALSE) {
+    #   writeData(wb, "Raw Background", background, startCol = 1, startRow = 1, xy = NULL,
+    #             colNames = TRUE, rowNames = FALSE)
+    # }
+    # 
+    # writeData(wb,  "Percent Diff", percent_diff_30, startCol = 1, startRow = 1, xy = NULL,
+    #           colNames = TRUE, rowNames = FALSE)
+    # 
+    # if (input$lid == FALSE) {
+    #   writeData(wb, "Percent Diff Subtracted", percent_diff_30_subtracted, startCol = 1, startRow = 1, xy = NULL,
+    #             colNames = TRUE, rowNames = FALSE)
+    # }
+    # 
+    # 
+    # barcode_label = c('LED Color', 'FAM', 'HEX', 'ROX', 'RED647', 'RED677')
+    # 
+    # writeData(wb, "Barcodes", barcode_label, startCol = 1, startRow = 1, xy = NULL,
+    #           colNames = TRUE, rowNames = FALSE)
+    # writeData(wb, "Barcodes", 'Barcode 1', startCol = 2, startRow = 1, xy = NULL,
+    #           colNames = TRUE, rowNames = FALSE)
+    # writeData(wb, "Barcodes", 'Barcode 2', startCol = 3, startRow = 1, xy = NULL,
+    #           colNames = TRUE, rowNames = FALSE)
+    # writeData(wb, "Barcodes", vals1, startCol = 2, startRow = 2, xy = NULL,
+    #           colNames = TRUE, rowNames = FALSE)
+    # writeData(wb, "Barcodes", vals2, startCol = 3, startRow = 2, xy = NULL,
+    #           colNames = TRUE, rowNames = FALSE)
+    # 
+    # conditionalFormatting(wb, "Percent Diff",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
+    # conditionalFormatting(wb, "Percent Diff", 2:6, 2:3, rule = "<=-30", style = NULL)
+    # 
+    # conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = ">=30", style = NULL)
+    # conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = "<=-30", style = NULL)
+    # 
+    # if (input$lid == FALSE) {
+    #   conditionalFormatting(wb, "Percent Diff Subtracted",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
+    #   conditionalFormatting(wb, "Percent Diff Subtracted", 2:6, 2:3, rule = "<=-30", style = NULL)
+    #   
+    #   conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
+    #   conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
+    # }
+    wb <- generate_workbook(input$peekFile, input$bgFile,
+                            c(input$barcode1, input$barcode2),
+                            c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
+                            input$lid)
     
     filename <- "./reports/ThermocyclerDiagnosticReport.xlsx"
     
@@ -726,7 +762,6 @@ server <- function(input, output, session) {
     saveWorkbook(wb, filename)
 
     enable("download")
-    # return(wb)
     updateTabsetPanel(session, "tabs", selected = "Summary")
     
     reset("bgFile")
@@ -746,14 +781,10 @@ server <- function(input, output, session) {
   observe({
     if (isPeekFile() && isBackgroundFile() && isThermocyclerSN() && isPantherSN()) {
       enable("calculate")
-      # showFeedbackSuccess("calculate", color = "#337ab7")
     }
     else {
       disable("calculate")
-      # hideFeedback("calculate")
     }
-    # req(input$peekFile, input$bgFile, isThermocyclerSN, isPantherSN)
-    # enable("calculate")
   })
   
   output$download <- downloadHandler(
