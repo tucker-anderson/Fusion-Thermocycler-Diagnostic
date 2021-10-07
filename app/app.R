@@ -100,7 +100,7 @@ ui <- fluidPage(
       # Output: Tabset w/ plot, summary, and table
       tabsetPanel(id = "tabs", type = "tabs",
                   tabPanel("Summary", 
-                    tableOutput("summary")),
+                    tableOutput("summaryTable")),
                   tabPanel("PEEK",
                    radioButtons("peekColor", "Dye Color:", inline = TRUE, 
                                 c("FAM" = 0,
@@ -740,6 +740,9 @@ ui <- fluidPage(
     enable("download")
     updateTabsetPanel(session, "tabs", selected = "Summary")
     
+    summary_visual <- generate_data_visual(input$bgFile[["datapath"]], color = "FAM", fun = "mean")
+    output$summaryTable <- renderTable(summary_visual)
+
     reset("bgFile")
     isBackgroundFile(FALSE)
     reset("peekFile")
