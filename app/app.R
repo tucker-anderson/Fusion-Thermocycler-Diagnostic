@@ -12,7 +12,7 @@ library("RPostgreSQL")
 ########################################################################################
 #----------------------------UI DEFINITIONS-----------------------------------------
 ########################################################################################
-version <- "v1.0.0.1"
+version <- "v1.0.0.2"
 
 ui <- fluidPage(
   useShinyjs(),
@@ -37,9 +37,6 @@ ui <- fluidPage(
           textInput("thermocyclerSN", "Thermocycler Serial #", placeholder = "e.g. J0001D16D0")
         )
       ),
-      
-      # # Horizontal line
-      # tags$hr(),
       
       # Input: Select a file 
       fileInput("peekFile", "Select PEEK Scan File",
@@ -99,8 +96,6 @@ ui <- fluidPage(
     mainPanel(
       # Output: Tabset w/ plot, summary, and table
       tabsetPanel(id = "tabs", type = "tabs",
-                  tabPanel("Summary", 
-                    tableOutput("summaryTable")),
                   tabPanel("PEEK",
                    radioButtons("peekColor", "Dye Color:", inline = TRUE, 
                                 c("FAM" = 0,
@@ -126,7 +121,22 @@ ui <- fluidPage(
                                    "Max" = "max",
                                    "Min" = "min",
                                    "Std Dev" = "sd")),
-                    tableOutput("bgTable"))
+                    tableOutput("bgTable")),
+                  tabPanel("Summary",
+                    # tabsetPanel(id = "summary_tabs", type = "tabs",
+                    #   tabPanel("Background subtracted Peek",
+                    #     mainPanel(
+                    #     h3(textOutput("Fluorometer Values")),
+                    #     tableOutput("bgSubPeekFLTable"),
+                    #     textOutput("Well Values"),
+                    #     tableOutput("bgSubPeekWellTable")
+                    #     )
+                    #   ),
+                    #   tabPanel("Percent Difference",
+                    #            tableOutput("bgSubPeekTable")
+                    #   )
+                    # )
+                  )
       )
     )
   ),
@@ -428,6 +438,15 @@ ui <- fluidPage(
     }
     return(data_reshaped)
   }
+    
+  ######################################################################################
+  # Function to extract data frame from SSW scan files, return shaped differently than generate_data function
+  # parameters are input from shiny UI (peek file, bg file, barcodes, peek, if lid is present) 
+  # return a data frame of extracted data
+  generate_summary <- function(input_peek, input_bg, barcodes, peek_values, is_lid) {
+    peek_dataset <- generate_data(input_peek)
+    bg_dataset <- generate_data(input_bg)
+  }
 
   ######################################################################################
   # Function to generate excel workbook with summary of peek and bg scans
@@ -724,24 +743,28 @@ ui <- fluidPage(
   ######################################################################################
   # Event Observers for diagnostic calculation and download
   observeEvent(input$calculate, {
-    wb <- generate_workbook(input$peekFile, input$bgFile,
-                            c(input$barcode1, input$barcode2),
-                            c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
-                            input$lid)
+    # summary_visual <- generate_summary(input$peekFile[["datapath"]],
+    #                                    input$bgFile[["datapath"]],
+    #                                    c(input$barcode1, input$barcode2),
+    #                                    c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
+    #                                    input$lid)
+    # output$summaryTable <- renderTable(summary_visual)
     
-    filename <- "./reports/ThermocyclerDiagnosticReport.xlsx"
-    
-    if (file.exists(filename)) {
-      file.remove(filename)
-    }
-    
-    saveWorkbook(wb, filename)
+    # wb <- generate_workbook(input$peekFile, input$bgFile,
+    #                         c(input$barcode1, input$barcode2),
+    #                         c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
+    #                         input$lid)
+    # 
+    # filename <- "./reports/ThermocyclerDiagnosticReport.xlsx"
+    # 
+    # if (file.exists(filename)) {
+    #   file.remove(filename)
+    # }
+    # 
+    # saveWorkbook(wb, filename)
 
     enable("download")
     updateTabsetPanel(session, "tabs", selected = "Summary")
-    
-    summary_visual <- generate_data_visual(input$bgFile[["datapath"]], color = "FAM", fun = "mean")
-    output$summaryTable <- renderTable(summary_visual)
 
     reset("bgFile")
     isBackgroundFile(FALSE)
@@ -772,11 +795,28 @@ ui <- fluidPage(
 
   # download button to extract xlsx diagnostic file from server
   output$download <- downloadHandler(
-      filename = function() {
-        paste("ThermocyclerDiagnosticReport.xlsx", ".xlsx", sep = "")
-      },
+      filename = "ThermocyclerDiagnosticReport.xlsx",
       content = function(file) {
+        # Copy the report file to a temporary directory before processing it, in
+        # case we don't have write permissions to the current working dir (which
+        # can happen when deployed).
+        wb <- generate_workbook(input$peekFile, input$bgFile,
+                                c(input$barcode1, input$barcode2),
+                                c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
+                                input$lid)
+        
+        # filename <- "./reports/ThermocyclerDiagnosticReport.xlsx"
+        filepath <- "./reports/ThermocyclerDiagnosticReport.xlsx"
+        # filepath <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
+        
+        if (file.exists(filepath)) {
+          file.remove(filepath)
+        }
+        
+        # tempReport <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
+        saveWorkbook(wb, filepath)
         file.copy("./reports/ThermocyclerDiagnosticReport.xlsx", file)
+        # file.copy("ThermocyclerDiagnosticReport.xlsx", tempReport, overwrite = TRUE)
       }
   )
 }
