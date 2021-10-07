@@ -805,7 +805,6 @@ ui <- fluidPage(
                                 c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
                                 input$lid)
         
-        # filename <- "./reports/ThermocyclerDiagnosticReport.xlsx"
         filepath <- "./reports/ThermocyclerDiagnosticReport.xlsx"
         # filepath <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
         
