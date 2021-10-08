@@ -699,7 +699,8 @@ ui <- fluidPage(
   observeEvent(input$bgFile, {
     is_peek <- check_filetype(input$bgFile[["datapath"]], "Peek Lid Scan")
     is_bg <- check_filetype(input$bgFile[["datapath"]], "Background Scan")
-    is_pm_bg <- check_filetype(input$peekFile[["datapath"]], "Panther Main BG Scan")
+    is_pm_bg <- check_filetype(input$bgFile[["datapath"]], "Panther Main BG Scan")
+    browser()
     if (is_peek) {
       showNotification("Peek Scan File detected.")
       alert("PEEK Scan File detected. Please upload a Background scan file.")
