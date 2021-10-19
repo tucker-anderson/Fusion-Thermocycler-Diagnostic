@@ -4,6 +4,7 @@ library("shinyFeedback")
 library("stringr")
 library("plyr")
 library("openxlsx")
+library("knitr")
 library("RPostgreSQL")
 
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
@@ -94,50 +95,81 @@ ui <- fluidPage(
     
     # Main panel for displaying outputs
     mainPanel(
+
       # Output: Tabset w/ plot, summary, and table
       tabsetPanel(id = "tabs", type = "tabs",
                   tabPanel("PEEK",
-                   radioButtons("peekColor", "Dye Color:", inline = TRUE, 
-                                c("FAM" = 0,
-                                  "HEX" = 1,
-                                  "ROX" = 2,
-                                  "RED647" = 3,
-                                  "RED677" = 4)),   
-                    radioButtons("peekAgg", "Aggregation Type:", inline = TRUE, 
-                                 c("Mean" = "mean",
-                                   "Max" = "max",
-                                   "Min" = "min",
-                                   "Std Dev" = "sd")),
+                  #  radioButtons("peekColor", "Dye Color:", inline = TRUE, 
+                  #               c("FAM" = 0,
+                  #                 "HEX" = 1,
+                  #                 "ROX" = 2,
+                  #                 "RED647" = 3,
+                  #                 "RED677" = 4)),   
+                  #   radioButtons("peekAgg", "Aggregation Type:", inline = TRUE, 
+                  #                c("Mean" = "mean",
+                  #                  "Max" = "max",
+                  #                  "Min" = "min",
+                  #                  "Std Dev" = "sd")),
                     tableOutput("peekTable")),
                   tabPanel("Background", 
-                   radioButtons("bgColor", "Dye Color:", inline = TRUE,
+                  #  radioButtons("bgColor", "Dye Color:", inline = TRUE,
+                  #               c("FAM" = 0,
+                  #                 "HEX" = 1,
+                  #                 "ROX" = 2,
+                  #                 "RED647" = 3,
+                  #                 "RED677" = 4)),   
+                  #   radioButtons("bgAgg", "Aggregation Type:", inline = TRUE,
+                  #                c("Mean" = "mean",
+                  #                  "Max" = "max",
+                  #                  "Min" = "min",
+                  #                  "Std Dev" = "sd")),
+                    tableOutput("bgTable")),
+                  tabPanel("Summary",
+                    tabsetPanel(id = "summary_tabs", type = "tabs",
+                      tabPanel("Background subtracted Peek",
+                        radioButtons("bgSubPeekColor", "Dye Color:", inline = TRUE, 
                                 c("FAM" = 0,
                                   "HEX" = 1,
                                   "ROX" = 2,
                                   "RED647" = 3,
                                   "RED677" = 4)),   
-                    radioButtons("bgAgg", "Aggregation Type:", inline = TRUE,
+                         radioButtons("bgSubPeekAgg", "Aggregation Type:", inline = TRUE, 
                                  c("Mean" = "mean",
                                    "Max" = "max",
                                    "Min" = "min",
                                    "Std Dev" = "sd")),
-                    tableOutput("bgTable")),
-                  tabPanel("Summary",
-                    # tabsetPanel(id = "summary_tabs", type = "tabs",
-                    #   tabPanel("Background subtracted Peek",
-                    #     mainPanel(
-                    #     h3(textOutput("Fluorometer Values")),
-                    #     tableOutput("bgSubPeekFLTable"),
-                    #     textOutput("Well Values"),
-                    #     tableOutput("bgSubPeekWellTable")
-                    #     )
-                    #   ),
-                    #   tabPanel("Percent Difference",
-                    #            tableOutput("bgSubPeekTable")
-                    #   )
-                    # )
+                        tableOutput("bgSubPeekFLTable"),
+                        tableOutput("bgSubPeekWellTable")
+                        ),
+                      tabPanel("Percent Difference",
+                        radioButtons("peekColor", "Dye Color:", inline = TRUE, 
+                                c("FAM" = 0,
+                                  "HEX" = 1,
+                                  "ROX" = 2,
+                                  "RED647" = 3,
+                                  "RED677" = 4)),   
+                         radioButtons("peekAgg", "Aggregation Type:", inline = TRUE, 
+                                 c("Mean" = "mean",
+                                   "Max" = "max",
+                                   "Min" = "min",
+                                   "Std Dev" = "sd")),
+                        tableOutput("percentDiffFLTable"),
+                        tableOutput("percentDiffWellTable")
+                      )
+                    )
                   )
-      )
+      ),
+      radioButtons("Color", "Dye Color:", inline = TRUE, 
+                                c("FAM" = 0,
+                                  "HEX" = 1,
+                                  "ROX" = 2,
+                                  "RED647" = 3,
+                                  "RED677" = 4)),   
+      radioButtons("Agg", "Aggregation Type:", inline = TRUE, 
+                                 c("Mean" = "mean",
+                                   "Max" = "max",
+                                   "Min" = "min",
+                                   "Std Dev" = "sd"))
     )
   ),
   # App version
@@ -193,23 +225,23 @@ ui <- fluidPage(
   # function to take in scan file data from ssw
   # parameter is extracted well data (from generate_data function)
   # return the average of each fluorometer color in a data frame
-  average_wells <- function(well_data){
+  average_wells <- function(well_data, fun = mean){
     well_data <- well_data[order(well_data$Dye) , ]
     
     FAM <- subset(well_data, Dye == 0) 
-    FAM_ave = ddply(FAM,~Well,summarise,Mean = mean(RFU))
+    FAM_ave = ddply(FAM,~Well,summarise,Mean = fun(RFU))
     
     HEX <- subset(well_data, Dye == 1) 
-    HEX_ave = ddply(HEX,~Well,summarise,Mean = mean(RFU))
+    HEX_ave = ddply(HEX,~Well,summarise,Mean = fun(RFU))
     
     ROX <- subset(well_data, Dye == 2) 
-    ROX_ave = ddply(ROX,~Well,summarise,Mean = mean(RFU))
+    ROX_ave = ddply(ROX,~Well,summarise,Mean = fun(RFU))
     
     RED647 <- subset(well_data, Dye == 3) 
-    RED647_ave = ddply(RED647,~Well,summarise,Mean = mean(RFU))
+    RED647_ave = ddply(RED647,~Well,summarise,Mean = fun(RFU))
     
     RED677 <- subset(well_data, Dye == 4) 
-    RED677_ave = ddply(RED677,~Well,summarise,Mean = mean(RFU))
+    RED677_ave = ddply(RED677,~Well,summarise,Mean = fun(RFU))
     
     stats <- data.frame(FAM_ave,
                        HEX_ave,
@@ -227,22 +259,22 @@ ui <- fluidPage(
   # function to take in scan file data from ssw
   # parameter is extracted well data (from generate_data function)
   # return the median of each fluorometer color in a data frame
-  fluorometer_med <- function(stats){
+  fluorometer_med <- function(stats, fun = median){
     flurometer1 = stats[1:30,]
-    FAM_median = median(flurometer1$`FAM Mean`)
-    HEX_median = median(flurometer1$`HEX Mean`)
-    ROX_median = median(flurometer1$`ROX Mean`)
-    RED647_median = median(flurometer1$`RED 647 Mean`)
-    RED677_median = median(flurometer1$`RED 677 Mean`)
+    FAM_median = fun(flurometer1$`FAM Mean`)
+    HEX_median = fun(flurometer1$`HEX Mean`)
+    ROX_median = fun(flurometer1$`ROX Mean`)
+    RED647_median = fun(flurometer1$`RED 647 Mean`)
+    RED677_median = fun(flurometer1$`RED 677 Mean`)
     
     fluorometer1 = data.frame(FAM_median,HEX_median,ROX_median,RED647_median,RED677_median)
 
     flurometer2 = stats[31:60,]
-    FAM_median = median(flurometer2$`FAM Mean`)
-    HEX_median = median(flurometer2$`HEX Mean`)
-    ROX_median = median(flurometer2$`ROX Mean`)
-    RED647_median = median(flurometer2$`RED 647 Mean`)
-    RED677_median = median(flurometer2$`RED 677 Mean`)
+    FAM_median = fun(flurometer2$`FAM Mean`)
+    HEX_median = fun(flurometer2$`HEX Mean`)
+    ROX_median = fun(flurometer2$`ROX Mean`)
+    RED647_median = fun(flurometer2$`RED 647 Mean`)
+    RED677_median = fun(flurometer2$`RED 677 Mean`)
     
     fluorometer2 = data.frame(FAM_median,HEX_median,ROX_median,RED647_median,RED677_median)
     
@@ -394,7 +426,7 @@ ui <- fluidPage(
   # function to extract data frame from SSW scan files, return shaped differently than generate_data function
   # parameter is SSW scan file 
   # return a data frame of extracted data
-  generate_data_visual <- function(input, color, fun = c("mean", "max", "min", "sd")) {
+  generate_data_visual <- function(input, color, fun) {
     data_set <- generate_data(input)
     
     data_set <- data_set[data_set$Dye == color, ]
@@ -700,7 +732,6 @@ ui <- fluidPage(
     is_peek <- check_filetype(input$bgFile[["datapath"]], "Peek Lid Scan")
     is_bg <- check_filetype(input$bgFile[["datapath"]], "Background Scan")
     is_pm_bg <- check_filetype(input$bgFile[["datapath"]], "Panther Main BG Scan")
-    browser()
     if (is_peek) {
       showNotification("Peek Scan File detected.")
       alert("PEEK Scan File detected. Please upload a Background scan file.")
@@ -724,19 +755,19 @@ ui <- fluidPage(
   # Event Observers for tab navigation
   # when navigated to, some data should be calculated/displayed
   observeEvent({input$tabs == input$PEEK
-    input$peekColor
-    input$peekAgg}, {
+    input$Color
+    input$Agg}, {
     if (length(input$peekFile) != 0) {
-      peek_visual <- generate_data_visual(input$peekFile[["datapath"]], color = input$peekColor, fun = input$peekAgg)
+      peek_visual <- generate_data_visual(input$peekFile[["datapath"]], color = input$Color, fun = input$Agg)
       output$peekTable <- renderTable(peek_visual)
     }
   })
 
   observeEvent({input$tabs == input$Background
-    input$bgColor
-    input$bgAgg}, {
+    input$Color
+    input$Agg}, {
       if (length(input$bgFile) != 0) {
-        bg_visual <- generate_data_visual(input$bgFile[["datapath"]], color = input$bgColor, fun = input$bgAgg)
+        bg_visual <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg)
         output$bgTable <- renderTable(bg_visual)
       }
     })
