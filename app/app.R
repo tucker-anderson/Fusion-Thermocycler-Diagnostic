@@ -43,19 +43,32 @@ ui <- fluidPage(
         )
       ),
       
+      # Input: Select a background file
+      fileInput("bgFile", "Select Background Scan File",
+                width = "100%",
+                multiple = FALSE,
+                accept = c("text/csv",
+                           # "text/comma-separated-values,text/plain",
+                           ".csv")),
+      
       # Input: Select a file 
       fileInput("peekFile", "Select PEEK Scan File",
-                width = "85%",
+                width = "100%",
                 multiple = FALSE,
                 accept = c("text/csv",
                            # "text/comma-separated-values,text/plain",
                            ".csv")),
       
       # Input: Select Lid Presence
-      radioButtons("lid", "Lid Present",
+      fixedRow(
+        # column(2),
+        column(6, radioButtons("lid", "Lid Present",
                  choices = c("No Lid (PEEK sheet used)" = FALSE, "Integrated Lid" = TRUE),
                  inline = TRUE,
                  selected = TRUE),
+               offset = 1
+               )
+        ),
       fixedRow(
         column(4,
           verticalLayout(
@@ -65,7 +78,8 @@ ui <- fluidPage(
             textInput("peek3", "Peek Sheet ROX:", placeholder = "e.g. 3000"),
             textInput("peek4", "Peek Sheet RED647:", placeholder = "e.g. 400"),
             textInput("peek5", "Peek Sheet RED677:", placeholder = "e.g. 5000")
-          )
+          ),
+          offset = 1
         ),
         column(6,
           verticalLayout(
@@ -78,14 +92,6 @@ ui <- fluidPage(
           )
         )
       ),
-        
-      # Input: Select a background file
-      fileInput("bgFile", "Select Background Scan File",
-                width = "85%",
-                multiple = FALSE,
-                accept = c("text/csv",
-                           # "text/comma-separated-values,text/plain",
-                           ".csv")),
       
       # Horizontal line
       tags$hr(),
