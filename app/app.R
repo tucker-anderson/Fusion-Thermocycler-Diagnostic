@@ -29,13 +29,17 @@ ui <- fluidPage(
     sidebarPanel(
       
       fixedRow(
-        column(5,
+        column(4,
           # Input: Input Thermocycler serial number for record keeping.
           textInput("pantherSN", "Panther Serial #", placeholder = "e.g. 2090000101")
         ),
-        column(5,
+        column(4,
           # Input: Input Thermocycler serial number for record keeping.
           textInput("thermocyclerSN", "Thermocycler Serial #", placeholder = "e.g. J0001D16D0")
+        ),
+        column(4,
+         # Input: Input Thermocycler part number for record keeping.
+         textInput("thermocyclerPN", "Thermocycler Part #", placeholder = "e.g. ASY-10119, RM-ASY-09123")
         )
       ),
       
@@ -195,6 +199,7 @@ ui <- fluidPage(
     
     isPantherSN <- reactiveVal(FALSE)
     isThermocyclerSN <- reactiveVal(FALSE)
+    isThermocyclerPN <- reactiveVal(FALSE)
     isPeekFile <- reactiveVal(FALSE)
     isBackgroundFile <- reactiveVal(FALSE)
 
@@ -225,23 +230,23 @@ ui <- fluidPage(
   # function to take in scan file data from ssw
   # parameter is extracted well data (from generate_data function)
   # return the average of each fluorometer color in a data frame
-  average_wells <- function(well_data, fun = mean){
+  average_wells <- function(well_data){
     well_data <- well_data[order(well_data$Dye) , ]
     
     FAM <- subset(well_data, Dye == 0) 
-    FAM_ave = ddply(FAM,~Well,summarise,Mean = fun(RFU))
+    FAM_ave = ddply(FAM,~Well,summarise,Mean = mean(RFU))
     
     HEX <- subset(well_data, Dye == 1) 
-    HEX_ave = ddply(HEX,~Well,summarise,Mean = fun(RFU))
+    HEX_ave = ddply(HEX,~Well,summarise,Mean = mean(RFU))
     
     ROX <- subset(well_data, Dye == 2) 
-    ROX_ave = ddply(ROX,~Well,summarise,Mean = fun(RFU))
+    ROX_ave = ddply(ROX,~Well,summarise,Mean = mean(RFU))
     
     RED647 <- subset(well_data, Dye == 3) 
-    RED647_ave = ddply(RED647,~Well,summarise,Mean = fun(RFU))
+    RED647_ave = ddply(RED647,~Well,summarise,Mean = mean(RFU))
     
     RED677 <- subset(well_data, Dye == 4) 
-    RED677_ave = ddply(RED677,~Well,summarise,Mean = fun(RFU))
+    RED677_ave = ddply(RED677,~Well,summarise,Mean = mean(RFU))
     
     stats <- data.frame(FAM_ave,
                        HEX_ave,
@@ -259,22 +264,22 @@ ui <- fluidPage(
   # function to take in scan file data from ssw
   # parameter is extracted well data (from generate_data function)
   # return the median of each fluorometer color in a data frame
-  fluorometer_med <- function(stats, fun = median){
+  fluorometer_med <- function(stats){
     flurometer1 = stats[1:30,]
-    FAM_median = fun(flurometer1$`FAM Mean`)
-    HEX_median = fun(flurometer1$`HEX Mean`)
-    ROX_median = fun(flurometer1$`ROX Mean`)
-    RED647_median = fun(flurometer1$`RED 647 Mean`)
-    RED677_median = fun(flurometer1$`RED 677 Mean`)
+    FAM_median = median(flurometer1$`FAM Mean`)
+    HEX_median = median(flurometer1$`HEX Mean`)
+    ROX_median = median(flurometer1$`ROX Mean`)
+    RED647_median = median(flurometer1$`RED 647 Mean`)
+    RED677_median = median(flurometer1$`RED 677 Mean`)
     
     fluorometer1 = data.frame(FAM_median,HEX_median,ROX_median,RED647_median,RED677_median)
 
     flurometer2 = stats[31:60,]
-    FAM_median = fun(flurometer2$`FAM Mean`)
-    HEX_median = fun(flurometer2$`HEX Mean`)
-    ROX_median = fun(flurometer2$`ROX Mean`)
-    RED647_median = fun(flurometer2$`RED 647 Mean`)
-    RED677_median = fun(flurometer2$`RED 677 Mean`)
+    FAM_median = median(flurometer2$`FAM Mean`)
+    HEX_median = median(flurometer2$`HEX Mean`)
+    ROX_median = median(flurometer2$`ROX Mean`)
+    RED647_median = median(flurometer2$`RED 647 Mean`)
+    RED677_median = median(flurometer2$`RED 677 Mean`)
     
     fluorometer2 = data.frame(FAM_median,HEX_median,ROX_median,RED647_median,RED677_median)
     
@@ -623,7 +628,7 @@ ui <- fluidPage(
       hideFeedback("pantherSN")
       showFeedbackWarning(
         inputId = "pantherSN",
-        text = "Serial Number should be 10 digits!"
+        text = "SN does not match known format(s)!"
       )
       isPantherSN(FALSE)
     }
@@ -648,7 +653,7 @@ ui <- fluidPage(
       hideFeedback("thermocyclerSN")
       showFeedbackWarning(
         inputId = "thermocyclerSN",
-        text = "Serial Number should be 10 characters and match example format!"
+        text = "SN does not match known format(s)!"
       )
       isThermocyclerSN(FALSE)
     }
@@ -656,6 +661,31 @@ ui <- fluidPage(
       hideFeedback("thermocyclerSN")
       isThermocyclerSN(TRUE)
       showFeedbackSuccess("thermocyclerSN", color = "#337ab7")
+    }
+  })
+  
+  observeEvent(input$thermocyclerPN, {
+    if (length(input$thermocyclerPN) == 0) {
+      hideFeedback("thermocyclerPN")
+      isThermocyclerPN(FALSE)
+    }
+    else if (input$thermocyclerPN == "NA") {
+      hideFeedback("thermocyclerPN")
+      isThermocyclerPN(TRUE) 
+      showFeedbackSuccess("thermocyclerPN", color = "#337ab7")
+    }
+    else if (!grepl("^[A-Z]*-?ASY-[0-9]{5}$", input$thermocyclerPN)) { #eg ASY-07574, RM-ASY-09123, RASY-10119
+      hideFeedback("thermocyclerPN")
+      showFeedbackWarning(
+        inputId = "thermocyclerPN",
+        text = "PN does not match known format(s)!"
+      )
+      isThermocyclerPN(FALSE)
+    }
+    else {
+      hideFeedback("thermocyclerPN")
+      isThermocyclerPN(TRUE)
+      showFeedbackSuccess("thermocyclerPN", color = "#337ab7")
     }
   })
   
@@ -808,12 +838,13 @@ ui <- fluidPage(
     if (isDatabase) {
       update_database_panther_sn(con, input$pantherSN)
       update_database_tc_sn(con, input$thermocyclerSN)
+      #TODO update db with TC PN as well
     }
   })
   
   # only enable calculate if both files uploaded correctly & SNs input in correct format
   observe({
-    if (isPeekFile() && isBackgroundFile() && isThermocyclerSN() && isPantherSN()) {
+    if (isPeekFile() && isBackgroundFile() && isThermocyclerSN() && isThermocyclerSN() && isPantherSN()) {
       enable("calculate")
     }
     else {
