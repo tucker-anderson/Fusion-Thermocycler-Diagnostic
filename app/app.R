@@ -31,15 +31,15 @@ ui <- fluidPage(
       fixedRow(
         column(4,
           # Input: Input Thermocycler serial number for record keeping.
-          textInput("pantherSN", "Panther Serial #", placeholder = "e.g. 2090000101")
+          textInput("pantherSN", "Panther Serial #", placeholder = "2090000101")
         ),
         column(4,
           # Input: Input Thermocycler serial number for record keeping.
-          textInput("thermocyclerSN", "Thermocycler Serial #", placeholder = "e.g. J0001D16D0")
+          textInput("thermocyclerSN", "Thermocycler Serial #", placeholder = "J0001D16D0")
         ),
         column(4,
          # Input: Input Thermocycler part number for record keeping.
-         textInput("thermocyclerPN", "Thermocycler Part #", placeholder = "e.g. ASY-10119, RM-ASY-09123")
+         textInput("thermocyclerPN", "Thermocycler Part #", placeholder = "ASY-10119, RM-ASY-09123")
         )
       ),
       
@@ -52,7 +52,7 @@ ui <- fluidPage(
                            ".csv")),
       
       # Input: Select a file 
-      fileInput("peekFile", "Select PEEK Scan File",
+      fileInput("peekFile", "Select Peek Scan File",
                 width = "100%",
                 multiple = FALSE,
                 accept = c("text/csv",
@@ -63,7 +63,7 @@ ui <- fluidPage(
       fixedRow(
         # column(2),
         column(6, radioButtons("lid", "Lid Present",
-                 choices = c("No Lid (PEEK sheet used)" = FALSE, "Integrated Lid" = TRUE),
+                 choices = c("No Lid (Peek sheet used)" = FALSE, "Integrated Lid" = TRUE),
                  inline = TRUE,
                  selected = TRUE),
                offset = 1
@@ -72,7 +72,7 @@ ui <- fluidPage(
       fixedRow(
         column(4,
           verticalLayout(
-            # Input: Select PEEK Lid Values
+            # Input: Select peek Lid Values
             textInput("peek1", "Peek Sheet FAM:", placeholder = "e.g. 10000"),
             textInput("peek2", "Peek Sheet HEX:", placeholder = "e.g. 2000"),
             textInput("peek3", "Peek Sheet ROX:", placeholder = "e.g. 3000"),
@@ -83,7 +83,7 @@ ui <- fluidPage(
         ),
         column(6,
           verticalLayout(
-            # Input: Select Barcode values if lid is present. Autopopulated on PEEK file upload if barcode information present.
+            # Input: Select Barcode values if lid is present. Autopopulated on peek file upload if barcode information present.
             textInput("barcode1", "Lid Barcode 1:", placeholder = "e.g. 10000000000000000000000"),
             # NULL,
             # min = 10000000000000000000000, 
@@ -108,19 +108,6 @@ ui <- fluidPage(
 
       # Output: Tabset w/ plot, summary, and table
       tabsetPanel(id = "tabs", type = "tabs",
-                  tabPanel("PEEK",
-                  #  radioButtons("peekColor", "Dye Color:", inline = TRUE, 
-                  #               c("FAM" = 0,
-                  #                 "HEX" = 1,
-                  #                 "ROX" = 2,
-                  #                 "RED647" = 3,
-                  #                 "RED677" = 4)),   
-                  #   radioButtons("peekAgg", "Aggregation Type:", inline = TRUE, 
-                  #                c("Mean" = "mean",
-                  #                  "Max" = "max",
-                  #                  "Min" = "min",
-                  #                  "Std Dev" = "sd")),
-                    tableOutput("peekTable")),
                   tabPanel("Background", 
                   #  radioButtons("bgColor", "Dye Color:", inline = TRUE,
                   #               c("FAM" = 0,
@@ -134,7 +121,20 @@ ui <- fluidPage(
                   #                  "Min" = "min",
                   #                  "Std Dev" = "sd")),
                     tableOutput("bgTable")),
-                  tabPanel("Summary",
+                  tabPanel("Peek",
+                           #  radioButtons("peekColor", "Dye Color:", inline = TRUE, 
+                           #               c("FAM" = 0,
+                           #                 "HEX" = 1,
+                           #                 "ROX" = 2,
+                           #                 "RED647" = 3,
+                           #                 "RED677" = 4)),   
+                           #   radioButtons("peekAgg", "Aggregation Type:", inline = TRUE, 
+                           #                c("Mean" = "mean",
+                           #                  "Max" = "max",
+                           #                  "Min" = "min",
+                           #                  "Std Dev" = "sd")),
+                           tableOutput("peekTable")),
+                  tabPanel("Peek + Background",
                     tabsetPanel(id = "summary_tabs", type = "tabs",
                       tabPanel("Background subtracted Peek",
                         radioButtons("bgSubPeekColor", "Dye Color:", inline = TRUE, 
@@ -190,27 +190,27 @@ ui <- fluidPage(
 #----------------------------SERVER DEFINITION------------------------------------------
 ########################################################################################
 
-  server <- function(input, output, session) {
-    isDatabase <- FALSE
+server <- function(input, output, session) {
+  isDatabase <- FALSE
+  
+  if (isDatabase) {
+    db <- 'tc_diagnostic'
+    host_db <- 'localhost'
+    db_port <- '5432'
+    db_user <- 'shiny_user'
+    db_password <- 'shiny'
     
-    if (isDatabase) {
-      db <- 'tc_diagnostic'
-      host_db <- 'localhost'
-      db_port <- '5432'
-      db_user <- 'shiny_user'
-      db_password <- 'shiny'
-      
-      con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
-    }
-    
-    isPantherSN <- reactiveVal(FALSE)
-    isThermocyclerSN <- reactiveVal(FALSE)
-    isThermocyclerPN <- reactiveVal(FALSE)
-    isPeekFile <- reactiveVal(FALSE)
-    isBackgroundFile <- reactiveVal(FALSE)
+    con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
+  }
+  
+  isPantherSN <- reactiveVal(FALSE)
+  isThermocyclerSN <- reactiveVal(FALSE)
+  isThermocyclerPN <- reactiveVal(FALSE)
+  isPeekFile <- reactiveVal(FALSE)
+  isBackgroundFile <- reactiveVal(FALSE)
 
-    peekFilemd5 <- reactiveVal("")
-    bgFilemd5 <- reactiveVal("")
+  peekFilemd5 <- reactiveVal("")
+  bgFilemd5 <- reactiveVal("")
   
 ########################################################################################
 #----------------------------FUNCTION DEFINITIONS---------------------------------------
@@ -300,9 +300,9 @@ ui <- fluidPage(
   }
   
   ######################################################################################
-  # Function to take in a PEEK barcode, as a single string
+  # Function to take in a peek barcode, as a single string
   # parameter is single string from peek lid barcode
-  # return expected values for PEEK sheet as a vector of ints for each color
+  # return expected values for peek sheet as a vector of ints for each color
   read_barcode <- function(barcode){
     FAM <- as.numeric(substr(format(barcode, scientific = FALSE), 3, 6)) * 10
     HEX <- as.numeric(substr(format(barcode, scientific = FALSE), 7, 10))
@@ -367,11 +367,11 @@ ui <- fluidPage(
   }
   
   ######################################################################################
-  # Function to attempt to get barcodes from PEEK input file
+  # Function to attempt to get barcodes from peek input file
   # parameter is peek SSW scan file
   # return barcodes as vector of strings. If they cannot be found, return empty vector
-  get_barcodes <- function(input_PEEK){
-    input_lines <- readLines(input_PEEK)
+  get_barcodes <- function(input_peek){
+    input_lines <- readLines(input_peek)
     barcode_lines <- str_subset(input_lines, "Barcode")
 
     #No barcodes in file
@@ -394,11 +394,11 @@ ui <- fluidPage(
   }
   
   ######################################################################################
-  # Function to attempt to get manual peek lid values from PEEK input file
+  # Function to attempt to get manual peek lid values from peek input file
   # parameter is peek SSW scan file
   # return peek lid values as vector of strings. If they cannot be found, return empty vector
-  get_peek_values <- function(input_PEEK){
-    input_lines <- readLines(input_PEEK)
+  get_peek_values <- function(input_peek){
+    input_lines <- readLines(input_peek)
     peek_lines <- str_subset(input_lines, "Peek.*Fluorometer")
     
     #No peek lines in file
@@ -418,9 +418,9 @@ ui <- fluidPage(
     RED646_2 <- str_match(peek_lines, "RED646: ([0-9]+)")[2,2]
     RED677_2 <- str_match(peek_lines, "RED677: ([0-9]+)")[2,2]
     
-    # no peek lid scanned. SSW uses string of four zeroes for PEEK placeholder
+    # no peek lid scanned. SSW uses string of four zeroes for peek placeholder
     if (FAM_1 == "0000" | FAM_2 == "0000") {
-      return(c("0", "0", "0", "0", "0", "No PEEK Lid Data included in file, please manually update."))
+      return(c("0", "0", "0", "0", "0", "No Peek Lid Data included in file, please manually update."))
     }
     
     # peek values should be the same 
@@ -429,7 +429,7 @@ ui <- fluidPage(
     }
     # but if they aren't who knows, most likely barcode scan but peek values still included in files
     else {
-      return(c(FAM_1, HEX_1, ROX_1, RED646_1, RED677_1, "PEEK Lid data included in scan file does not match between fluorometers, please manually update."))
+      return(c(FAM_1, HEX_1, ROX_1, RED646_1, RED677_1, "Peek Lid data included in scan file does not match between fluorometers, please manually update."))
     }
   }
   
@@ -526,14 +526,14 @@ ui <- fluidPage(
     
     #generate workbook
     wb <- createWorkbook()
-    addWorksheet(wb, "Raw PEEK")
+    addWorksheet(wb, "Raw Peek")
     addWorksheet(wb, "Raw Background") 
     addWorksheet(wb, "Background Subtracted")
     addWorksheet(wb, "Percent Diff")
     addWorksheet(wb, "Percent Diff Subtracted") 
     addWorksheet(wb, "Barcodes")
     
-    writeData(wb, "Raw PEEK", peek, startCol = 1, startRow = 1, xy = NULL,
+    writeData(wb, "Raw Peek", peek, startCol = 1, startRow = 1, xy = NULL,
               colNames = TRUE, rowNames = FALSE)
     writeData(wb, "Raw Background", background, startCol = 1, startRow = 1, xy = NULL,
                 colNames = TRUE, rowNames = FALSE)
@@ -696,15 +696,15 @@ ui <- fluidPage(
   })
   
   ######################################################################################
-  # Event Observers for PEEK File upload
-  # Attempt to verify that file is a PEEK scan and not background and populate barcodes etc.
+  # Event Observers for peek File upload
+  # Attempt to verify that file is a peek scan and not background and populate barcodes etc.
   observeEvent(input$peekFile, {
     is_peek <- check_filetype(input$peekFile[["datapath"]], "Peek Lid Scan")
     is_bg <- check_filetype(input$peekFile[["datapath"]], "Background Scan")
     is_pm_bg <- check_filetype(input$peekFile[["datapath"]], "Panther Main BG Scan")
     if (is_peek) {
       showNotification("Peek Scan File detected.")
-      updateTabsetPanel(session, "tabs", selected = "PEEK")
+      updateTabsetPanel(session, "tabs", selected = "peek")
       isPeekFile(TRUE)
       peekFilemd5(toString(tools::md5sum(input$peekFile[["datapath"]])))
       
@@ -751,7 +751,7 @@ ui <- fluidPage(
       }
     }
     else if (is_bg | is_pm_bg) {
-      alert("Background Scan File detected. Please upload a PEEK scan file.")
+      alert("Background Scan File detected. Please upload a Peek scan file.")
       reset("peekFile")
       isPeekFile(FALSE)
     }
@@ -770,7 +770,7 @@ ui <- fluidPage(
     is_pm_bg <- check_filetype(input$bgFile[["datapath"]], "Panther Main BG Scan")
     if (is_peek) {
       showNotification("Peek Scan File detected.")
-      alert("PEEK Scan File detected. Please upload a Background scan file.")
+      alert("Peek Scan File detected. Please upload a Background scan file.")
       reset("bgFile")
       isBackgroundFile(FALSE)
     }
@@ -790,7 +790,7 @@ ui <- fluidPage(
   ######################################################################################
   # Event Observers for tab navigation
   # when navigated to, some data should be calculated/displayed
-  observeEvent({input$tabs == input$PEEK
+  observeEvent({input$tabs == input$peek
     input$Color
     input$Agg}, {
     if (length(input$peekFile) != 0) {
