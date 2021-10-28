@@ -108,65 +108,32 @@ ui <- fluidPage(
 
       # Output: Tabset w/ plot, summary, and table
       tabsetPanel(id = "tabs", type = "tabs",
-                  tabPanel("Background", 
-                  #  radioButtons("bgColor", "Dye Color:", inline = TRUE,
-                  #               c("FAM" = 0,
-                  #                 "HEX" = 1,
-                  #                 "ROX" = 2,
-                  #                 "RED647" = 3,
-                  #                 "RED677" = 4)),   
-                  #   radioButtons("bgAgg", "Aggregation Type:", inline = TRUE,
-                  #                c("Mean" = "mean",
-                  #                  "Max" = "max",
-                  #                  "Min" = "min",
-                  #                  "Std Dev" = "sd")),
-                    tableOutput("bgTable")),
+                  tabPanel("Peek+Background",
+                   tabsetPanel(id = "summary_tabs", type = "tabs",
+                     tabPanel("Background subtracted Peek",
+                      tableOutput("bgSubPeekFLTable"),
+                      tableOutput("bgSubPeekTable")
+                     ),
+                     tabPanel("Percent Difference",
+                      tableOutput("percentDiffFLTable"),
+                      tableOutput("percentDiffTable")
+                     ),
+                     tabPanel("Background subracted Percent Difference",
+                      tableOutput("bgSubPercentDiffFLTable"),
+                      tableOutput("bgSubPercentDiffTable")
+                     )
+                   )
+                  ),
+                  tabPanel("Background",
+                     tableOutput("bgTable"),
+                     tableOutput("bgFLTable"),
+                   ),
                   tabPanel("Peek",
-                           #  radioButtons("peekColor", "Dye Color:", inline = TRUE, 
-                           #               c("FAM" = 0,
-                           #                 "HEX" = 1,
-                           #                 "ROX" = 2,
-                           #                 "RED647" = 3,
-                           #                 "RED677" = 4)),   
-                           #   radioButtons("peekAgg", "Aggregation Type:", inline = TRUE, 
-                           #                c("Mean" = "mean",
-                           #                  "Max" = "max",
-                           #                  "Min" = "min",
-                           #                  "Std Dev" = "sd")),
-                           tableOutput("peekTable")),
-                  tabPanel("Peek + Background",
-                    tabsetPanel(id = "summary_tabs", type = "tabs",
-                      tabPanel("Background subtracted Peek",
-                        radioButtons("bgSubPeekColor", "Dye Color:", inline = TRUE, 
-                                c("FAM" = 0,
-                                  "HEX" = 1,
-                                  "ROX" = 2,
-                                  "RED647" = 3,
-                                  "RED677" = 4)),   
-                         radioButtons("bgSubPeekAgg", "Aggregation Type:", inline = TRUE, 
-                                 c("Mean" = "mean",
-                                   "Max" = "max",
-                                   "Min" = "min",
-                                   "Std Dev" = "sd")),
-                        tableOutput("bgSubPeekFLTable"),
-                        tableOutput("bgSubPeekWellTable")
-                        ),
-                      tabPanel("Percent Difference",
-                        radioButtons("peekColor", "Dye Color:", inline = TRUE, 
-                                c("FAM" = 0,
-                                  "HEX" = 1,
-                                  "ROX" = 2,
-                                  "RED647" = 3,
-                                  "RED677" = 4)),   
-                         radioButtons("peekAgg", "Aggregation Type:", inline = TRUE, 
-                                 c("Mean" = "mean",
-                                   "Max" = "max",
-                                   "Min" = "min",
-                                   "Std Dev" = "sd")),
-                        tableOutput("percentDiffFLTable"),
-                        tableOutput("percentDiffWellTable")
-                      )
-                    )
+                     tableOutput("peekTable"),
+                     tableOutput("peekFLTable"),
+                  ),
+                  tabPanel("Report",
+                     tableOutput("reportTable"),
                   )
       ),
       radioButtons("Color", "Dye Color:", inline = TRUE, 
@@ -435,60 +402,103 @@ server <- function(input, output, session) {
   
   ######################################################################################
   # function to extract data frame from SSW scan files, return shaped differently than generate_data function
-  # parameter is SSW scan file 
+  # parameter is SSW scan file
   # return a data frame of extracted data
-  generate_data_visual <- function(input, color, fun) {
-    data_set <- generate_data(input)
-    
-    data_set <- data_set[data_set$Dye == color, ]
-    data_set$Bank <- floor((data_set$Well - 1) / 5) + 1
-    data_set$Bank.Well <- (data_set$Well - 1) %% 5 + 1
-    
-    placeholderBank <- c(0,0,0,0,0)
-    data_reshaped <- data.frame(Bank.Well = 1:5, Bank1 = placeholderBank,
-                                Bank2 = placeholderBank,
-                                Bank3 = placeholderBank,
-                                Bank4 = placeholderBank,
-                                Bank5 = placeholderBank,
-                                Bank6 = placeholderBank,
-                                Bank7 = placeholderBank,
-                                Bank8 = placeholderBank,
-                                Bank9 = placeholderBank,
-                                Bank10 = placeholderBank,
-                                Bank11 = placeholderBank,
-                                Bank12 = placeholderBank)
-    
-    for (i in 1:12) {
-      bank <- paste0("Bank", i)
-      for (j in 1:5) {
-        well <- j
-        if (fun == "mean") {
-          data_reshaped[well, bank] <- mean(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-        }
-        if (fun == "min") {
-          data_reshaped[well, bank] <- min(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-        }
-        if (fun == "max") {
-          data_reshaped[well, bank] <- max(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-        }
-        if (fun == "sd") {
-          data_reshaped[well, bank] <- sd(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-        }
-        if (fun == "median") {
-          data_reshaped[well, bank] <- median(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+  generate_data_visual <- function(input, color, fun, FL=FALSE) {
+    if (FL == FALSE) {
+      data_set <- generate_data(input)
+      
+      data_set <- data_set[data_set$Dye == color, ]
+      data_set$Bank <- floor((data_set$Well - 1) / 5) + 1
+      data_set$Bank.Well <- (data_set$Well - 1) %% 5 + 1
+      
+      placeholderBank <- c(0,0,0,0,0)
+      data_reshaped <- data.frame(Bank.Well = 1:5, Bank1 = placeholderBank,
+                                  Bank2 = placeholderBank,
+                                  Bank3 = placeholderBank,
+                                  Bank4 = placeholderBank,
+                                  Bank5 = placeholderBank,
+                                  Bank6 = placeholderBank,
+                                  Bank7 = placeholderBank,
+                                  Bank8 = placeholderBank,
+                                  Bank9 = placeholderBank,
+                                  Bank10 = placeholderBank,
+                                  Bank11 = placeholderBank,
+                                  Bank12 = placeholderBank)
+      
+      for (i in 1:12) {
+        bank <- paste0("Bank", i)
+        for (j in 1:5) {
+          well <- j
+          if (fun == "mean") {
+            data_reshaped[well, bank] <- mean(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+          }
+          if (fun == "min") {
+            data_reshaped[well, bank] <- min(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+          }
+          if (fun == "max") {
+            data_reshaped[well, bank] <- max(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+          }
+          if (fun == "sd") {
+            data_reshaped[well, bank] <- sd(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+          }
+          if (fun == "median") {
+            data_reshaped[well, bank] <- median(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
+          }
         }
       }
+      return(data_reshaped)
     }
-    return(data_reshaped)
+    if (FL == TRUE) {
+      data_set <- generate_data(input)
+      
+      data_set <- data_set[data_set$Dye == color, ]
+      data_set$Fluorometer <- floor((data_set$Well - 1) / 31) + 1
+
+      placeholderFL <- c(0,0)
+      data_reshaped <- data.frame(Fluorometer = 1:2, Fluorescence = placeholderFL)
+      
+      for (i in 1:2) {
+        if (fun == "mean") {
+          data_reshaped[i, "Fluorescence"] <- mean(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+        }
+        if (fun == "min") {
+          data_reshaped[i, "Fluorescence"] <- min(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+        }
+        if (fun == "max") {
+          data_reshaped[i, "Fluorescence"] <- max(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+        }
+        if (fun == "sd") {
+          data_reshaped[i, "Fluorescence"] <- sd(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+        }
+        if (fun == "median") {
+          data_reshaped[i, "Fluorescence"] <- median(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+        }
+      }
+      return(data_reshaped)
+    }
   }
     
   ######################################################################################
   # Function to extract data frame from SSW scan files, return shaped differently than generate_data function
-  # parameters are input from shiny UI (peek file, bg file, barcodes, peek, if lid is present) 
+  # parameters are input from generate_data (peek file, bg file, barcodes, peek, if lid is present) 
   # return a data frame of extracted data
-  generate_summary <- function(input_peek, input_bg, barcodes, peek_values, is_lid) {
-    peek_dataset <- generate_data(input_peek)
-    bg_dataset <- generate_data(input_bg)
+  generate_bg_sub_peek <- function(input_peek, input_bg) {
+    peek_wells <- average_wells(input_peek)
+    bg_wells <- average_wells(input_bg)
+    
+    bg_sub_wells = data.frame(c(1:60), (peek_wells[,2:6] - bg_wells[,2:6])) 
+  }
+  
+  generate_percent_diff <- function(input_peek, barcodes, peek_values, is_lid) {
+    if (is_lid == TRUE) {
+      vals1 <- read_barcode(barcodes[1])
+      vals2 <- read_barcode(barcodes[2])
+    }
+    else {
+      vals1 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+      vals2 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+    }
   }
 
   ######################################################################################
@@ -543,6 +553,20 @@ server <- function(input, output, session) {
               colNames = TRUE, rowNames = FALSE)
     writeData(wb, "Percent Diff Subtracted", percent_diff_30_subtracted, startCol = 1, startRow = 1, xy = NULL,
                 colNames = TRUE, rowNames = FALSE)
+    
+    #FORMAT AS NUMBER
+    s <- createStyle(numFmt = "0.00")
+    
+    addStyle(wb, "Raw Peek", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Raw Peek", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Raw Background", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Raw Background", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Background Subtracted", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Background Subtracted", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Percent Diff", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Percent Diff", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Percent Diff Subtracted", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Percent Diff Subtracted", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
 
     barcode_label = c('LED Color', 'FAM', 'HEX', 'ROX', 'RED647', 'RED677')
     
@@ -704,7 +728,7 @@ server <- function(input, output, session) {
     is_pm_bg <- check_filetype(input$peekFile[["datapath"]], "Panther Main BG Scan")
     if (is_peek) {
       showNotification("Peek Scan File detected.")
-      updateTabsetPanel(session, "tabs", selected = "peek")
+      updateTabsetPanel(session, "tabs", selected = "Peek")
       isPeekFile(TRUE)
       peekFilemd5(toString(tools::md5sum(input$peekFile[["datapath"]])))
       
@@ -796,6 +820,8 @@ server <- function(input, output, session) {
     if (length(input$peekFile) != 0) {
       peek_visual <- generate_data_visual(input$peekFile[["datapath"]], color = input$Color, fun = input$Agg)
       output$peekTable <- renderTable(peek_visual)
+      peek_visual_FL <- generate_data_visual(input$peekFile[["datapath"]], color = input$Color, fun = input$Agg, FL=TRUE)
+      output$peekFLTable <- renderTable(peek_visual_FL)
     }
   })
 
@@ -805,8 +831,22 @@ server <- function(input, output, session) {
       if (length(input$bgFile) != 0) {
         bg_visual <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg)
         output$bgTable <- renderTable(bg_visual)
+        bg_visual_FL <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg, FL=TRUE)
+        output$bgFLTable <- renderTable(bg_visual_FL)
       }
     })
+  
+  observeEvent({input$tabs == input$`Peek+Background`
+    input$Color
+    input$Agg}, {
+      if (length(input$bgFile) != 0 & length(input$peekFile) != 0) {
+        bg_visual <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg)
+        output$bgTable <- renderTable(bg_visual)
+        bg_visual_FL <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg, FL=TRUE)
+        output$bgFLTable <- renderTable(bg_visual_FL)
+      }
+    })
+  
 
   ######################################################################################
   # Event Observers for diagnostic calculation and download
