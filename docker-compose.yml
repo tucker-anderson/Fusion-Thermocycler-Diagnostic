@@ -11,5 +11,3 @@ services:
     build: .
     ports: 
       - "3838:3838"
-volumes:
-  database-data: # named volumes can be managed easier using docker-compose
