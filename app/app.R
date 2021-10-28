@@ -557,15 +557,15 @@ server <- function(input, output, session) {
     #FORMAT AS NUMBER
     s <- createStyle(numFmt = "0.00")
     
-    addStyle(wb, "Raw Peek", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Raw Peek", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
     addStyle(wb, "Raw Peek", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
-    addStyle(wb, "Raw Background", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Raw Background", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
     addStyle(wb, "Raw Background", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
-    addStyle(wb, "Background Subtracted", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Background Subtracted", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
     addStyle(wb, "Background Subtracted", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
-    addStyle(wb, "Percent Diff", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Percent Diff", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
     addStyle(wb, "Percent Diff", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
-    addStyle(wb, "Percent Diff Subtracted", style = s, rows = 2:3, cols = 2:5, gridExpand = TRUE)
+    addStyle(wb, "Percent Diff Subtracted", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
     addStyle(wb, "Percent Diff Subtracted", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
 
     barcode_label = c('LED Color', 'FAM', 'HEX', 'ROX', 'RED647', 'RED677')
