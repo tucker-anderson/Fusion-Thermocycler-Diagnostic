@@ -8,7 +8,7 @@ library("knitr")
 library("RPostgreSQL")
 
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
-# TODO Make report and table output more clear
+# TODO Vectorize some GUI calculations to speed up table generation
 # TODO Save report/data, SN and Thermocycler SN into backend database
 ########################################################################################
 #----------------------------UI DEFINITIONS-----------------------------------------
@@ -105,49 +105,64 @@ ui <- fluidPage(
     
     # Main panel for displaying outputs
     mainPanel(
-
-      # Output: Tabset w/ plot, summary, and table
+      
+      # Output: Tabs w/ plot, summary, and table
       tabsetPanel(id = "tabs", type = "tabs",
-                  tabPanel("Peek+Background",
-                   tabsetPanel(id = "summary_tabs", type = "tabs",
-                     tabPanel("Background subtracted Peek",
-                      tableOutput("bgSubPeekFLTable"),
-                      tableOutput("bgSubPeekTable")
+                  tabPanel("Peek & Background",
+                    tabsetPanel(id = "summary_tabs", type = "tabs",
+                     tabPanel("Background Subtracted Peek",
+                              tableOutput("bgSubPeekTable"),
+                              tableOutput("bgSubPeekFLTable")
                      ),
-                     tabPanel("Percent Difference",
-                      tableOutput("percentDiffFLTable"),
-                      tableOutput("percentDiffTable")
-                     ),
-                     tabPanel("Background subracted Percent Difference",
-                      tableOutput("bgSubPercentDiffFLTable"),
-                      tableOutput("bgSubPercentDiffTable")
+                     tabPanel("Background Subtracted Peek % Difference",
+                              tableOutput("bgSubPercentDiffTable"),
+                              tableOutput("bgSubPercentDiffFLTable")
                      )
-                   )
+                    ),
                   ),
                   tabPanel("Background",
-                     tableOutput("bgTable"),
-                     tableOutput("bgFLTable"),
-                   ),
+                   tabsetPanel(id = "bg_tabs", type = "tabs",
+                     tabPanel("Raw Background",
+                       tableOutput("bgTable"),
+                       tableOutput("bgFLTable"),
+                     )
+                    ),
+                  ),
                   tabPanel("Peek",
-                     tableOutput("peekTable"),
-                     tableOutput("peekFLTable"),
+                     tabsetPanel(id = "peek_tabs", type = "tabs",
+                      tabPanel("Raw Peek",
+                       tableOutput("peekTable"),
+                       tableOutput("peekFLTable"),
+                      ),
+                      tabPanel("Peek % Difference",
+                        tableOutput("percentDiffTable"),
+                        tableOutput("percentDiffFLTable"),
+                      )
+                    ),
                   ),
                   tabPanel("Report",
                      tableOutput("reportTable"),
                   )
+                
       ),
-      radioButtons("Color", "Dye Color:", inline = TRUE, 
-                                c("FAM" = 0,
-                                  "HEX" = 1,
-                                  "ROX" = 2,
-                                  "RED647" = 3,
-                                  "RED677" = 4)),   
-      radioButtons("Agg", "Aggregation Type:", inline = TRUE, 
-                                 c("Mean" = "mean",
-                                   "Max" = "max",
-                                   "Min" = "min",
-                                   "Std Dev" = "sd"))
-    )
+      conditionalPanel(
+        condition = "input.tabs != 'Report'",
+        radioButtons("Color", "Dye Color:", inline = TRUE, 
+                                  c("FAM" = 0,
+                                    "HEX" = 1,
+                                    "ROX" = 2,
+                                    "RED647" = 3,
+                                    "RED677" = 4))
+      ),
+      conditionalPanel(
+        condition = "input.tabs != 'Peek & Background' && input.tabs != 'Report' && input$peek_tabs != 'Peek % Difference'",
+        radioButtons("Agg", "Well Aggregation Type:", inline = TRUE, 
+                                   c("Mean" = "mean",
+                                     "Max" = "max",
+                                     "Min" = "min",
+                                     "Std Dev" = "sd"))
+      ),
+    ),
   ),
   # App version
   absolutePanel(paste("Version: ", version), style="color:grey; font-size:10px")
@@ -282,38 +297,38 @@ server <- function(input, output, session) {
     return(expected_vals)
   }
   
-  ######################################################################################
-  # Function to calculate percent delta between peek calibration values and bg subtracted peek scan and normalize against this value
-  # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
-  # return percent difference between peek and bg sub peek scan wells as a list
-  val_norm <- function(vals1, vals2, wells, medians){
-    normalized_wells <- wells
-    normalized_medians <- medians
-    # for each fluorometer color
-    for (i in 1:5) {
-      # handle if barcode / peek is zero for this fluorometer
-      if (vals1[i] == 0 || vals2[i] == 0) {
-        normalized_wells[1:30, i + 1] = 0
-        normalized_medians[1,i + 1] = 0
-        
-        normalized_wells[31:60, i + 1] = 0
-        normalized_medians[2,i + 1] = 0
-      }
-      else {
-        #calculate percentages for fluorometer 1
-        normalized_wells[1:30, i + 1] = ((wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
-        normalized_medians[1,i + 1] = ((medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
-        
-        #calculate percentages for fluorometer 2
-        normalized_wells[31:60, i + 1] = ((wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
-        normalized_medians[2,i + 1] = ((medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
-      }
-    }
-    
-    normalized <- rbind.fill(list(normalized_medians, normalized_wells))
-    
-    return(normalized)
-  }
+  # ######################################################################################
+  # # Function to calculate percent delta between peek calibration values and bg subtracted peek scan and normalize against this value
+  # # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
+  # # return percent difference between peek and bg sub peek scan wells as a list
+  # val_norm <- function(vals1, vals2, wells, medians){
+  #   normalized_wells <- wells
+  #   normalized_medians <- medians
+  #   # for each fluorometer color
+  #   for (i in 1:5) {
+  #     # handle if barcode / peek is zero for this fluorometer
+  #     if (vals1[i] == 0 || vals2[i] == 0) {
+  #       normalized_wells[1:30, i + 1] = 0
+  #       normalized_medians[1,i + 1] = 0
+  #       
+  #       normalized_wells[31:60, i + 1] = 0
+  #       normalized_medians[2,i + 1] = 0
+  #     }
+  #     else {
+  #       #calculate percentages for fluorometer 1
+  #       normalized_wells[1:30, i + 1] = ((wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
+  #       normalized_medians[1,i + 1] = ((medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
+  #       
+  #       #calculate percentages for fluorometer 2
+  #       normalized_wells[31:60, i + 1] = ((wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
+  #       normalized_medians[2,i + 1] = ((medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
+  #     }
+  #   }
+  #   
+  #   normalized <- rbind.fill(list(normalized_medians, normalized_wells))
+  #   
+  #   return(normalized)
+  # }
 
   ######################################################################################
   # Function to check SSW scan filetype
@@ -361,6 +376,25 @@ server <- function(input, output, session) {
   }
   
   ######################################################################################
+  # Function to return correct peek values dependent upon if lid is present or not
+  # parameter is vectors of barcodes, peek values and a boolean of lid presence
+  # return peek vals as vector of numerics If they cannot be found, return empty vector
+  check_peek <- function(barcodes, peek_values, is_lid) {
+    if (is_lid == TRUE) {
+      vals1 <- read_barcode(barcodes[1])
+      vals2 <- read_barcode(barcodes[2])
+    }
+    else {
+      vals1 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+      vals2 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+    }
+    
+    vals <- list(vals1, vals2)
+    return(vals)
+
+  }
+  
+  ######################################################################################
   # Function to attempt to get manual peek lid values from peek input file
   # parameter is peek SSW scan file
   # return peek lid values as vector of strings. If they cannot be found, return empty vector
@@ -404,101 +438,219 @@ server <- function(input, output, session) {
   # function to extract data frame from SSW scan files, return shaped differently than generate_data function
   # parameter is SSW scan file
   # return a data frame of extracted data
-  generate_data_visual <- function(input, color, fun, FL=FALSE) {
-    if (FL == FALSE) {
-      data_set <- generate_data(input)
-      
-      data_set <- data_set[data_set$Dye == color, ]
-      data_set$Bank <- floor((data_set$Well - 1) / 5) + 1
-      data_set$Bank.Well <- (data_set$Well - 1) %% 5 + 1
-      
-      placeholderBank <- c(0,0,0,0,0)
-      data_reshaped <- data.frame(Bank.Well = 1:5, Bank1 = placeholderBank,
-                                  Bank2 = placeholderBank,
-                                  Bank3 = placeholderBank,
-                                  Bank4 = placeholderBank,
-                                  Bank5 = placeholderBank,
-                                  Bank6 = placeholderBank,
-                                  Bank7 = placeholderBank,
-                                  Bank8 = placeholderBank,
-                                  Bank9 = placeholderBank,
-                                  Bank10 = placeholderBank,
-                                  Bank11 = placeholderBank,
-                                  Bank12 = placeholderBank)
-      
-      for (i in 1:12) {
-        bank <- paste0("Bank", i)
-        for (j in 1:5) {
-          well <- j
-          if (fun == "mean") {
-            data_reshaped[well, bank] <- mean(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-          }
-          if (fun == "min") {
-            data_reshaped[well, bank] <- min(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-          }
-          if (fun == "max") {
-            data_reshaped[well, bank] <- max(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-          }
-          if (fun == "sd") {
-            data_reshaped[well, bank] <- sd(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-          }
-          if (fun == "median") {
-            data_reshaped[well, bank] <- median(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
-          }
-        }
-      }
-      return(data_reshaped)
-    }
-    if (FL == TRUE) {
-      data_set <- generate_data(input)
-      
-      data_set <- data_set[data_set$Dye == color, ]
-      data_set$Fluorometer <- floor((data_set$Well - 1) / 31) + 1
-
-      placeholderFL <- c(0,0)
-      data_reshaped <- data.frame(Fluorometer = 1:2, Fluorescence = placeholderFL)
-      
-      for (i in 1:2) {
+  generate_data_visual <- function(data, color, fun="mean", fl_fun="median", FL=FALSE) {
+    data_set <- data
+    
+    data_set <- data_set[data_set$Dye == color, ]
+    
+    data_set$Bank <- floor((data_set$Well - 1) / 5) + 1
+    data_set$Bank.Well <- (data_set$Well - 1) %% 5 + 1
+    
+    placeholderBank <- c(0,0,0,0,0)
+    data_reshaped <- data.frame(Bank.Well = 1:5, Bank1 = placeholderBank,
+                                Bank2 = placeholderBank,
+                                Bank3 = placeholderBank,
+                                Bank4 = placeholderBank,
+                                Bank5 = placeholderBank,
+                                Bank6 = placeholderBank,
+                                Bank7 = placeholderBank,
+                                Bank8 = placeholderBank,
+                                Bank9 = placeholderBank,
+                                Bank10 = placeholderBank,
+                                Bank11 = placeholderBank,
+                                Bank12 = placeholderBank)
+    
+    for (i in 1:12) {
+      bank <- paste0("Bank", i)
+      for (j in 1:5) {
+        well <- j
         if (fun == "mean") {
-          data_reshaped[i, "Fluorescence"] <- mean(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+          data_reshaped[well, bank] <- mean(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
         }
         if (fun == "min") {
-          data_reshaped[i, "Fluorescence"] <- min(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+          data_reshaped[well, bank] <- min(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
         }
         if (fun == "max") {
-          data_reshaped[i, "Fluorescence"] <- max(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+          data_reshaped[well, bank] <- max(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
         }
         if (fun == "sd") {
-          data_reshaped[i, "Fluorescence"] <- sd(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+          data_reshaped[well, bank] <- sd(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
         }
         if (fun == "median") {
-          data_reshaped[i, "Fluorescence"] <- median(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+          data_reshaped[well, bank] <- median(data_set[ which(data_set$Bank == i & data_set$Bank.Well == j & data_set$Dye == color),]$RFU)
         }
       }
-      return(data_reshaped)
     }
+    
+    if (FL == TRUE) {
+      fl1 <- unlist(data_reshaped[,2:7], use.names=FALSE)
+      fl2 <- unlist(data_reshaped[,8:13], use.names=FALSE)
+      
+      placeholderFL <- c(0,0)
+      data_reshaped_fl <- data.frame(Fluorometer = 1:2, Fluorescence = placeholderFL)
+      
+      if (fl_fun == "mean") {
+        data_reshaped_fl[, "Fluorescence"] <- c(mean(fl1), mean(fl2))
+      }
+      if (fl_fun == "min") {
+        data_reshaped_fl[, "Fluorescence"] <- c(min(fl1), min(fl2))
+      }
+      if (fl_fun == "max") {
+        data_reshaped_fl[, "Fluorescence"] <- c(max(fl1), max(fl2))
+      }
+      if (fl_fun == "sd") {
+        data_reshaped_fl[, "Fluorescence"] <- c(sd(fl1), sd(fl2))
+      }
+      if (fl_fun == "median") {
+        data_reshaped_fl[, "Fluorescence"] <- c(median(fl1), median(fl2))
+      }
+      return(data_reshaped_fl)
+    }
+    return(data_reshaped)
+    # if (FL == TRUE) {
+    # 
+    #   data_set$Fluorometer <- floor((data_set$Well - 1) / 31) + 1
+    #   data_set <- data_set[, .SD[which.mean(RFU)], by = .(Dye, Well)]
+    # 
+    #   placeholderFL <- c(0,0)
+    #   data_reshaped <- data.frame(Fluorometer = 1:2, Fluorescence = placeholderFL)
+    #   
+    #   for (i in 1:2) {
+    #     if (fun == "mean") {
+    #       data_reshaped[i, "Fluorescence"] <- mean(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+    #     }
+    #     if (fun == "min") {
+    #       data_reshaped[i, "Fluorescence"] <- min(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+    #     }
+    #     if (fun == "max") {
+    #       data_reshaped[i, "Fluorescence"] <- max(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+    #     }
+    #     if (fun == "sd") {
+    #       data_reshaped[i, "Fluorescence"] <- sd(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+    #     }
+    #     if (fun == "median") {
+    #       data_reshaped[i, "Fluorescence"] <- median(data_set[ which(data_set$Fluorometer == i & data_set$Dye == color),]$RFU)
+    #     }
+    #   }
+    #   return(data_reshaped)
+    # }
   }
     
   ######################################################################################
   # Function to extract data frame from SSW scan files, return shaped differently than generate_data function
   # parameters are input from generate_data (peek file, bg file, barcodes, peek, if lid is present) 
   # return a data frame of extracted data
-  generate_bg_sub_peek <- function(input_peek, input_bg) {
-    peek_wells <- average_wells(input_peek)
-    bg_wells <- average_wells(input_bg)
-    
-    bg_sub_wells = data.frame(c(1:60), (peek_wells[,2:6] - bg_wells[,2:6])) 
+  generate_bg_sub_peek <- function(peek_wells, bg_wells) {
+    # peek_means <- data.frame("Dye" = integer(0), "Well" = integer(0), "RFU" = integer(0))
+    # bg_means <- data.frame("Dye" = integer(0), "Well" = integer(0), "RFU" = integer(0))
+    bg_sub_wells <- data.frame("Dye" = integer(0), "Well" = integer(0), "RFU" = integer(0))
+
+    for (dye in unique(peek_wells$Dye)) {
+      for (well in 1:60) {
+        bg_sub <- mean(peek_wells[ which(peek_wells$Dye == dye & peek_wells$Well == well),]$RFU) - mean(bg_wells[ which(bg_wells$Dye == dye & bg_wells$Well == well),]$RFU)
+
+        bg_sub_wells[nrow(bg_sub_wells)+1,] <- c(dye, well, bg_sub)
+      }
+    }
+    return(bg_sub_wells)
   }
   
-  generate_percent_diff <- function(input_peek, barcodes, peek_values, is_lid) {
-    if (is_lid == TRUE) {
-      vals1 <- read_barcode(barcodes[1])
-      vals2 <- read_barcode(barcodes[2])
+  ######################################################################################
+  # Function to extract data frame from SSW scan files, return shaped differently than generate_data function
+  # parameters are input from generate_data (peek file, bg file, barcodes, peek, if lid is present) 
+  # return a data frame of extracted data
+  generate_percent_diff <- function(wells, vals, fun=mean) {
+    vals1 <- vals[[1]]
+    vals2 <- vals[[2]]
+    # peek_means <- data.frame("Dye" = integer(0), "Well" = integer(0), "RFU" = integer(0))
+    # bg_means <- data.frame("Dye" = integer(0), "Well" = integer(0), "RFU" = integer(0))
+    percent_diff <- data.frame("Dye" = integer(0), "Well" = integer(0), "RFU" = integer(0))
+    
+    for (dye in unique(wells$Dye)) {
+      for (well in 1:60) {
+        fl <- floor((well - 1) / 31) + 1
+        if (vals1[fl] == 0 || vals2[fl] == 0) {
+          percent_diff[nrow(percent_diff)+1,] <- c(dye, well, 0.0)
+        }
+        else {
+          diff <- ((fun(wells[ which(wells$Dye == dye & wells$Well == well),]$RFU) - vals[[fl]][dye+1]) / vals[[fl]][dye+1]) * 100
+
+          percent_diff[nrow(percent_diff)+1,] <- c(dye, well, diff)
+        }
+      }
     }
-    else {
-      vals1 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
-      vals2 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+    
+    return(percent_diff)
+  }
+  
+  ######################################################################################
+  # Function to calculate percent delta between peek calibration values and  peek scan and normalize against this value
+  # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
+  # return percent difference between peek scan and peek values as wells
+  generate_percent_diff_wells <- function(wells, vals) {
+    vals1 <- vals[[1]]
+    vals2 <- vals[[2]]
+    # percent_diff <- val_norm(vals1, vals2, peek_wells, peek_medians)
+    
+
+    # val_norm <- function(vals1, vals2, wells, medians){
+    normalized_wells <- wells
+    # for each fluorometer color
+    for (i in 1:5) {
+      # handle if barcode / peek is zero for this fluorometer
+      if (vals1[i] == 0 || vals2[i] == 0) {
+        normalized_wells[1:30, i + 1] = 0
+        # normalized_medians[1,i + 1] = 0
+        
+        normalized_wells[31:60, i + 1] = 0
+        # normalized_medians[2,i + 1] = 0
+      }
+      else {
+        #calculate percentages for fluorometer 1
+        normalized_wells[1:30, i + 1] = ((wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
+        # normalized_medians[1,i + 1] = ((medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
+        
+        #calculate percentages for fluorometer 2
+        normalized_wells[31:60, i + 1] = ((wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
+        # normalized_medians[2,i + 1] = ((medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
+      }
     }
+    
+    return(normalized_wells)
+  }
+  
+  ######################################################################################
+  # Function to calculate percent delta between peek calibration values and  peek scan and normalize against this value
+  # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
+  # return percent difference between peek scan and peek values as fluorometers
+  generate_percent_diff_fl <- function(fl, vals) {
+    vals1 <- vals[[1]]
+    vals2 <- vals[[2]]
+    
+    normalized_fl <- fl
+    
+    # for each fluorometer color
+    for (i in 1:5) {
+      # handle if barcode / peek is zero for this fluorometer
+      if (vals1[i] == 0 || vals2[i] == 0) {
+        # normalized_wells[1:30, i + 1] = 0
+        normalized_fl[1,i + 1] = 0
+        
+        # normalized_wells[31:60, i + 1] = 0
+        normalized_fl[2,i + 1] = 0
+      }
+      else {
+        #calculate percentages for fluorometer 1
+        # normalized_wells[1:30, i + 1] = ((wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
+        normalized_fl[1,i + 1] = ((fl[1, i + 1] - vals1[i]) / vals1[i] ) * 100
+        
+        #calculate percentages for fluorometer 2
+        # normalized_wells[31:60, i + 1] = ((wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
+        normalized_fl[2,i + 1] = ((fl[2,i + 1] - vals2[i]) / vals2[i]) * 100
+      }
+    }
+    
+    return(normalized_fl)
   }
 
   ######################################################################################
@@ -515,24 +667,35 @@ server <- function(input, output, session) {
     bg_wells <- average_wells(bg_dataset)
     bg_medians <- fluorometer_med(bg_wells)
 
-    bg_sub_wells = data.frame(c(1:60), (peek_wells[,2:6] - bg_wells[,2:6])) 
-    names(bg_sub_wells) <- c("Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")
+    bg_sub_wells = average_wells(generate_bg_sub_peek(peek_dataset, bg_dataset))
     bg_sub_medians = fluorometer_med(bg_sub_wells)
     
-    if (is_lid == TRUE) {
-      vals1 <- read_barcode(barcodes[1])
-      vals2 <- read_barcode(barcodes[2])
-    }
-    else {
-      vals1 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
-      vals2 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
-    }
-    percent_diff_30_subtracted <- val_norm(vals1, vals2, bg_sub_wells, bg_sub_medians)
-    percent_diff_30 <- val_norm(vals1, vals2, peek_wells, peek_medians)
-    
+    vals <- check_peek(barcodes, peek_values, is_lid)
+    vals1 <- vals[[1]]
+    vals2 <- vals[[2]]
+    # if (is_lid == TRUE) {
+    #   vals1 <- read_barcode(barcodes[1])
+    #   vals2 <- read_barcode(barcodes[2])
+    # }
+    # else {
+    #   vals1 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+    #   vals2 <- as.numeric(c(peek_values[1], peek_values[2], peek_values[3], peek_values[4], peek_values[5]))
+    # }
+    # percent_diff_30_subtracted <- generate_percent_diff(bg_sub_wells, bg_sub_medians, barcodes, peek_values, is_lid)
+    # percent_diff_wells <- generate_percent_diff_wells(peek_wells, barcodes, peek_values, is_lid)
+    # percent_diff_fls <- generate_percent_diff_fl(peek_medians, barcodes, peek_values, is_lid)
+    # percent_diff_subtracted_wells <- generate_percent_diff_wells(bg_sub_wells, barcodes, peek_values, is_lid)
+    # percent_diff_subtracted_fls <- generate_percent_diff_fl(bg_sub_medians, barcodes, peek_values, is_lid)
+    percent_diff_wells <- generate_percent_diff_wells(peek_wells, vals)
+    percent_diff_fls <- generate_percent_diff_fl(peek_medians, vals)
+    percent_diff_subtracted_wells <- generate_percent_diff_wells(bg_sub_wells, vals)
+    percent_diff_subtracted_fls <- generate_percent_diff_fl(bg_sub_medians, vals)
+
     peek <- rbind.fill(list(peek_medians, peek_wells))
     background <- rbind.fill(list(bg_medians, bg_wells)) 
     bg_sub <- rbind.fill(list(bg_sub_medians, bg_sub_wells))
+    percent_diff <- rbind.fill(list(percent_diff_fls, percent_diff_wells))
+    percent_diff_sub <- rbind.fill(list(percent_diff_subtracted_fls, percent_diff_subtracted_wells))
     
     #generate workbook
     wb <- createWorkbook()
@@ -549,14 +712,13 @@ server <- function(input, output, session) {
                 colNames = TRUE, rowNames = FALSE)
     writeData(wb, "Background Subtracted", bg_sub, startCol = 1, startRow = 1, xy = NULL,
                 colNames = TRUE, rowNames = FALSE)
-    writeData(wb,  "Percent Diff", percent_diff_30, startCol = 1, startRow = 1, xy = NULL,
+    writeData(wb,  "Percent Diff", percent_diff, startCol = 1, startRow = 1, xy = NULL,
               colNames = TRUE, rowNames = FALSE)
-    writeData(wb, "Percent Diff Subtracted", percent_diff_30_subtracted, startCol = 1, startRow = 1, xy = NULL,
+    writeData(wb, "Percent Diff Subtracted", percent_diff_sub, startCol = 1, startRow = 1, xy = NULL,
                 colNames = TRUE, rowNames = FALSE)
     
     #FORMAT AS NUMBER
     s <- createStyle(numFmt = "0.00")
-    
     addStyle(wb, "Raw Peek", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
     addStyle(wb, "Raw Peek", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
     addStyle(wb, "Raw Background", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
@@ -784,7 +946,6 @@ server <- function(input, output, session) {
       reset("peekFile")
       isPeekFile(FALSE)
     }
-    
   })
   
   # Attempt to verify that file is a background scan and not peek
@@ -814,39 +975,74 @@ server <- function(input, output, session) {
   ######################################################################################
   # Event Observers for tab navigation
   # when navigated to, some data should be calculated/displayed
-  observeEvent({input$tabs == input$peek
+  observeEvent({input$peek_tabs == input$`Raw Peek`
     input$Color
     input$Agg}, {
     if (length(input$peekFile) != 0) {
-      peek_visual <- generate_data_visual(input$peekFile[["datapath"]], color = input$Color, fun = input$Agg)
+      peek_dataset <- generate_data(input$peekFile[["datapath"]])
+      peek_visual <- generate_data_visual(peek_dataset, color = input$Color, fun = input$Agg)
       output$peekTable <- renderTable(peek_visual)
-      peek_visual_FL <- generate_data_visual(input$peekFile[["datapath"]], color = input$Color, fun = input$Agg, FL=TRUE)
+      peek_visual_FL <- generate_data_visual(peek_dataset, color = input$Color, fun = input$Agg, FL=TRUE)
       output$peekFLTable <- renderTable(peek_visual_FL)
     }
   })
 
-  observeEvent({input$tabs == input$Background
-    input$Color
-    input$Agg}, {
-      if (length(input$bgFile) != 0) {
-        bg_visual <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg)
-        output$bgTable <- renderTable(bg_visual)
-        bg_visual_FL <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg, FL=TRUE)
-        output$bgFLTable <- renderTable(bg_visual_FL)
+  observeEvent({input$peek_tabs == input$`Peek % Difference`
+    input$Color}, {
+      if (length(input$peekFile) != 0) {
+        peek_dataset <- generate_data(input$peekFile[["datapath"]])
+        vals <- check_peek(c(input$barcode1, input$barcode2), c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5), input$lid)
+        percent_diff <- generate_percent_diff(peek_dataset, vals)
+
+        percent_diff_visual <- generate_data_visual(percent_diff, color = input$Color)
+        output$percentDiffTable <- renderTable(percent_diff_visual)
+        percent_diff_visual_FL <- generate_data_visual(percent_diff, color = input$Color, FL=TRUE)
+        output$percentDiffFLTable <- renderTable(percent_diff_visual_FL)
       }
     })
-  
-  observeEvent({input$tabs == input$`Peek+Background`
+
+  observeEvent({input$tabs == input$`Raw Background`
     input$Color
     input$Agg}, {
+    if (length(input$bgFile) != 0) {
+      bg_dataset <- generate_data(input$bgFile[["datapath"]])
+      bg_visual <- generate_data_visual(bg_dataset, color = input$Color, fun = input$Agg)
+      output$bgTable <- renderTable(bg_visual)
+      bg_visual_FL <- generate_data_visual(bg_dataset, color = input$Color, fun = input$Agg, FL=TRUE)
+      output$bgFLTable <- renderTable(bg_visual_FL)
+    }
+  })
+  
+  observeEvent({input$tabs == input$`Peek & Background` && input$summary_tabs == input$`Background subtracted Peek`
+    input$Color}, {
       if (length(input$bgFile) != 0 & length(input$peekFile) != 0) {
-        bg_visual <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg)
-        output$bgTable <- renderTable(bg_visual)
-        bg_visual_FL <- generate_data_visual(input$bgFile[["datapath"]], color = input$Color, fun = input$Agg, FL=TRUE)
-        output$bgFLTable <- renderTable(bg_visual_FL)
+        peek_dataset <- generate_data(input$peekFile[["datapath"]])
+        bg_dataset <- generate_data(input$bgFile[["datapath"]])
+        bg_sub_wells <- generate_bg_sub_peek(peek_dataset, bg_dataset)
+        
+        bg_sub_visual <- generate_data_visual(bg_sub_wells, color = input$Color)
+        output$bgSubPeekTable <- renderTable(bg_sub_visual)
+        bg_sub_visual_FL <- generate_data_visual(bg_sub_wells, color = input$Color, fun ="mean", FL=TRUE)
+        output$bgSubPeekFLTable <- renderTable(bg_sub_visual_FL)
       }
     })
-  
+
+  observeEvent({input$summary_tabs == input$`Background Subtracted Peek % Difference`
+    input$Color}, {
+      if (length(input$bgFile) != 0 & length(input$peekFile) != 0) {
+        peek_dataset <- generate_data(input$peekFile[["datapath"]])
+        bg_dataset <- generate_data(input$bgFile[["datapath"]])
+        vals <- check_peek(c(input$barcode1, input$barcode2), c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5), input$lid)
+
+        bg_sub_wells <- generate_bg_sub_peek(peek_dataset, bg_dataset)
+        bg_sub_percent_diff <- generate_percent_diff(bg_sub_wells, vals)
+        
+        bg_sub_percent_diff_visual <- generate_data_visual(bg_sub_percent_diff, color = input$Color)
+        output$bgSubPercentDiffTable <- renderTable(bg_sub_percent_diff_visual)
+        bg_sub_percent_diff_visual_FL <- generate_data_visual(bg_sub_percent_diff, color = input$Color, FL=TRUE)
+        output$bgSubPercentDiffFLTable <- renderTable(bg_sub_percent_diff_visual_FL)
+      }
+    })
 
   ######################################################################################
   # Event Observers for diagnostic calculation and download
