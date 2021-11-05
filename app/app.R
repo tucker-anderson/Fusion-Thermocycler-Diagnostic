@@ -155,7 +155,7 @@ ui <- fluidPage(
                                     "RED677" = 4))
       ),
       conditionalPanel(
-        condition = "input.tabs != 'Peek & Background' && input.tabs != 'Report' && input$peek_tabs != 'Peek % Difference'",
+        condition = "input.tabs != 'Peek & Background' && input.tabs != 'Report' && input.peek_tabs != 'Peek % Difference'",
         radioButtons("Agg", "Well Aggregation Type:", inline = TRUE, 
                                    c("Mean" = "mean",
                                      "Max" = "max",
@@ -891,6 +891,7 @@ server <- function(input, output, session) {
     if (is_peek) {
       showNotification("Peek Scan File detected.")
       updateTabsetPanel(session, "tabs", selected = "Peek")
+      updateTabsetPanel(session, "peek_tabs", selected = "Raw Peek")
       isPeekFile(TRUE)
       peekFilemd5(toString(tools::md5sum(input$peekFile[["datapath"]])))
       
@@ -962,6 +963,7 @@ server <- function(input, output, session) {
     else if (is_bg | is_pm_bg) {
       showNotification("Background Scan File detected.")
       updateTabsetPanel(session, "tabs", selected = "Background")
+      updateTabsetPanel(session, "bg_tabs", selected = "Raw Background")
       isBackgroundFile(TRUE)
       bgFilemd5(toString(tools::md5sum(input$bgFile[["datapath"]])))
     }
@@ -975,7 +977,7 @@ server <- function(input, output, session) {
   ######################################################################################
   # Event Observers for tab navigation
   # when navigated to, some data should be calculated/displayed
-  observeEvent({input$peek_tabs == input$`Raw Peek`
+  observeEvent({input$tabs == input$`Raw Peek`
     input$Color
     input$Agg}, {
     if (length(input$peekFile) != 0) {
