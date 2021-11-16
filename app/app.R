@@ -10,9 +10,9 @@ library("RPostgreSQL")
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
 # TODO Vectorize some GUI calculations to speed up table generation
 # TODO Save report/data, SN and Thermocycler SN into backend database
-########################################################################################
-#----------------------------UI DEFINITIONS-----------------------------------------
-########################################################################################
+################################################################################
+#----------------------------UI DEFINITIONS-------------------------------------
+################################################################################
 version <- "v1.0.0.2"
 
 ui <- fluidPage(
@@ -51,7 +51,10 @@ ui <- fluidPage(
                            # "text/comma-separated-values,text/plain",
                            ".csv")),
       
-      # Input: Select a file 
+      # Horizontal line
+      tags$hr(),
+      
+      # Input: Select a peek file 
       fileInput("peekFile", "Select Peek Scan File",
                 width = "100%",
                 multiple = FALSE,
@@ -93,6 +96,12 @@ ui <- fluidPage(
         )
       ),
       
+      fixedRow(
+        column(3, numericInput("bgMax", "Background Max", value = 1.80, min = 0.0, max = 5.0, step = 0.1), offset = 1),
+        column(3, numericInput("peekMin", "Peek Min", value = 0.60, min = 0.0, max = 1.0, step = 0.1), offset = 1),
+        column(3, numericInput("ledMin", "LED Min", value = 0.40, min = 0.0, max = 1.0, step = 0.1), offset = 1),
+      ),
+      
       # Horizontal line
       tags$hr(),
       
@@ -100,7 +109,15 @@ ui <- fluidPage(
       disabled(actionButton("calculate", "Calculate")),
       
       # Output: Downloader to export excel report
-      disabled(downloadButton("download", "Download Excel Report"))
+      disabled(downloadButton("download", "Download Excel Report")),
+      
+      fixedRow(
+        # column(2),
+        column(6, checkboxInput("dev", "Developer Options",
+                               value = FALSE),
+               offset = 0
+        )
+      ),
     ),
     
     # Main panel for displaying outputs
@@ -141,7 +158,7 @@ ui <- fluidPage(
                     ),
                   ),
                   tabPanel("Report",
-                     tableOutput("reportTable"),
+                     htmlOutput("report"),
                   )
                 
       ),
@@ -168,9 +185,9 @@ ui <- fluidPage(
   absolutePanel(paste("Version: ", version), style="color:grey; font-size:10px")
 )
 
-########################################################################################
-#----------------------------SERVER DEFINITION------------------------------------------
-########################################################################################
+################################################################################
+#----------------------------SERVER DEFINITION----------------------------------
+################################################################################
 
 server <- function(input, output, session) {
   isDatabase <- FALSE
@@ -194,11 +211,11 @@ server <- function(input, output, session) {
   peekFilemd5 <- reactiveVal("")
   bgFilemd5 <- reactiveVal("")
   
-########################################################################################
-#----------------------------FUNCTION DEFINITIONS---------------------------------------
-########################################################################################
+################################################################################
+#----------------------------FUNCTION DEFINITIONS-------------------------------
+################################################################################
 
-  ######################################################################################
+  ##############################################################################
   # function to extract data frame from SSW scan files
   # parameter is SSW scan file 
   # return a data frame of extracted data
@@ -214,7 +231,7 @@ server <- function(input, output, session) {
     return(data_set)
   }
   
-  ######################################################################################
+  ##############################################################################
   # function to take in scan file data from ssw
   # parameter is extracted well data (from generate_data function)
   # return the average of each fluorometer color in a data frame
@@ -248,7 +265,7 @@ server <- function(input, output, session) {
     return(stats)
   }
 
-  ######################################################################################
+  ##############################################################################
   # function to take in scan file data from ssw
   # parameter is extracted well data (from generate_data function)
   # return the median of each fluorometer color in a data frame
@@ -281,7 +298,7 @@ server <- function(input, output, session) {
     return(medians)
   }
   
-  ######################################################################################
+  ##############################################################################
   # Function to take in a peek barcode, as a single string
   # parameter is single string from peek lid barcode
   # return expected values for peek sheet as a vector of ints for each color
@@ -297,7 +314,7 @@ server <- function(input, output, session) {
     return(expected_vals)
   }
   
-  # ######################################################################################
+  # ##############################################################################
   # # Function to calculate percent delta between peek calibration values and bg subtracted peek scan and normalize against this value
   # # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
   # # return percent difference between peek and bg sub peek scan wells as a list
@@ -330,7 +347,7 @@ server <- function(input, output, session) {
   #   return(normalized)
   # }
 
-  ######################################################################################
+  ##############################################################################
   # Function to check SSW scan filetype
   # parameters are scan file, and string of scan type (same as displayed in file)
   # return boolean of if input type matches detected scan file type 
@@ -348,7 +365,7 @@ server <- function(input, output, session) {
     }
   }
   
-  ######################################################################################
+  ##############################################################################
   # Function to attempt to get barcodes from peek input file
   # parameter is peek SSW scan file
   # return barcodes as vector of strings. If they cannot be found, return empty vector
@@ -375,7 +392,7 @@ server <- function(input, output, session) {
     return(c(barcode_1, barcode_2))
   }
   
-  ######################################################################################
+  ##############################################################################
   # Function to return correct peek values dependent upon if lid is present or not
   # parameter is vectors of barcodes, peek values and a boolean of lid presence
   # return peek vals as vector of numerics If they cannot be found, return empty vector
@@ -394,7 +411,7 @@ server <- function(input, output, session) {
 
   }
   
-  ######################################################################################
+  ##############################################################################
   # Function to attempt to get manual peek lid values from peek input file
   # parameter is peek SSW scan file
   # return peek lid values as vector of strings. If they cannot be found, return empty vector
@@ -433,8 +450,8 @@ server <- function(input, output, session) {
       return(c(FAM_1, HEX_1, ROX_1, RED646_1, RED677_1, "Peek Lid data included in scan file does not match between fluorometers, please manually update."))
     }
   }
-  
-  ######################################################################################
+ 
+  ##############################################################################
   # function to extract data frame from SSW scan files, return shaped differently than generate_data function
   # parameter is SSW scan file
   # return a data frame of extracted data
@@ -536,7 +553,7 @@ server <- function(input, output, session) {
     # }
   }
     
-  ######################################################################################
+  ##############################################################################
   # Function to extract data frame from SSW scan files, return shaped differently than generate_data function
   # parameters are input from generate_data (peek file, bg file, barcodes, peek, if lid is present) 
   # return a data frame of extracted data
@@ -555,7 +572,7 @@ server <- function(input, output, session) {
     return(bg_sub_wells)
   }
   
-  ######################################################################################
+  ##############################################################################
   # Function to extract data frame from SSW scan files, return shaped differently than generate_data function
   # parameters are input from generate_data (peek file, bg file, barcodes, peek, if lid is present) 
   # return a data frame of extracted data
@@ -583,7 +600,7 @@ server <- function(input, output, session) {
     return(percent_diff)
   }
   
-  ######################################################################################
+  ##############################################################################
   # Function to calculate percent delta between peek calibration values and  peek scan and normalize against this value
   # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
   # return percent difference between peek scan and peek values as wells
@@ -619,7 +636,7 @@ server <- function(input, output, session) {
     return(normalized_wells)
   }
   
-  ######################################################################################
+  ##############################################################################
   # Function to calculate percent delta between peek calibration values and  peek scan and normalize against this value
   # parameters are peek values (from bc or peek lid) and bg subtracted peek scan wells and median values
   # return percent difference between peek scan and peek values as fluorometers
@@ -653,7 +670,7 @@ server <- function(input, output, session) {
     return(normalized_fl)
   }
 
-  ######################################################################################
+  ##############################################################################
   # Function to generate excel workbook with summary of peek and bg scans
   # parameters are input from shiny UI (peek file, bg file, barcodes, peek, if lid is present) 
   # return excel spreadsheet
@@ -759,7 +776,15 @@ server <- function(input, output, session) {
     return(wb)
   }
 
-  ######################################################################################
+  # check_wells <- function(wells, threshold) {
+  #   
+  # }
+  # 
+  # check_fl_decay <- function(dataset, threshold) {
+  # 
+  # }
+
+  ##############################################################################
   # function to update database with Panther SN
   # parameters are database connection and Panther SN as string 
   # return nothing
@@ -767,7 +792,7 @@ server <- function(input, output, session) {
     dbSendQuery(conn, paste0("INSERT INTO public.panther_info (panther_sn) VALUES ('", pantherSN, "') ON CONFLICT (panther_sn) DO NOTHING"))
   }
   
-  ######################################################################################
+  ##############################################################################
   # Function to update database with Fusion SN
   # parameters are database connection and Fusion SN as string 
   # return nothing
@@ -777,11 +802,41 @@ server <- function(input, output, session) {
     dbSendQuery(conn, paste0("INSERT INTO public.tc_info (tc_sn) VALUES ('", tcSN, "') ON CONFLICT (tc_sn) DO NOTHING"))
   }
 
-########################################################################################
-#---------------------------------EVENT OBSERVERS---------------------------------------
-########################################################################################
+################################################################################
+#---------------------------------EVENT OBSERVERS-------------------------------
+################################################################################
+  
+  ##############################################################################
+  # Event Observer for dev options. Show dev options if checkboxed
+  observeEvent(input$dev, {
+    toggle("lid")
+    toggle("peek1")
+    toggle("peek2")
+    toggle("peek3")
+    toggle("peek4")
+    toggle("peek5")
+    toggle("barcode1")
+    toggle("barcode2")
+    toggle("bgMax")
+    toggle("peekMin")
+    toggle("ledMin")
+    # else {
+    #   hide("lid")
+    #   hide("peek1")
+    #   hide("peek2")
+    #   hide("peek3")
+    #   hide("peek4")
+    #   hide("peek5")
+    #   hide("barcode1")
+    #   hide("barcode2")
+    #   hide("bgMax")
+    #   hide("peekMin")
+    #   hide("ledMin")
+    # }
+    
+  })
 
-  ######################################################################################
+  ##############################################################################
   # Event Observers for lid presence. Disable numeric fields if no lid selected
   observe({
     if (input$lid == TRUE) {
@@ -804,7 +859,7 @@ server <- function(input, output, session) {
     }
   })
   
-  ######################################################################################
+  ##############################################################################
   # Event observers for SN text input
   observeEvent(input$pantherSN, {
     if (length(input$pantherSN) == 0) {
@@ -881,7 +936,7 @@ server <- function(input, output, session) {
     }
   })
   
-  ######################################################################################
+  ##############################################################################
   # Event Observers for peek File upload
   # Attempt to verify that file is a peek scan and not background and populate barcodes etc.
   observeEvent(input$peekFile, {
@@ -974,7 +1029,7 @@ server <- function(input, output, session) {
     }
   })
 
-  ######################################################################################
+  ##############################################################################
   # Event Observers for tab navigation
   # when navigated to, some data should be calculated/displayed
   observeEvent({input$tabs == input$`Raw Peek`
@@ -1046,31 +1101,12 @@ server <- function(input, output, session) {
       }
     })
 
-  ######################################################################################
+  ##############################################################################
   # Event Observers for diagnostic calculation and download
   observeEvent(input$calculate, {
-    # summary_visual <- generate_summary(input$peekFile[["datapath"]],
-    #                                    input$bgFile[["datapath"]],
-    #                                    c(input$barcode1, input$barcode2),
-    #                                    c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
-    #                                    input$lid)
-    # output$summaryTable <- renderTable(summary_visual)
-    
-    # wb <- generate_workbook(input$peekFile, input$bgFile,
-    #                         c(input$barcode1, input$barcode2),
-    #                         c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
-    #                         input$lid)
-    # 
-    # filename <- "./reports/ThermocyclerDiagnosticReport.xlsx"
-    # 
-    # if (file.exists(filename)) {
-    #   file.remove(filename)
-    # }
-    # 
-    # saveWorkbook(wb, filename)
-
     enable("download")
-    updateTabsetPanel(session, "tabs", selected = "Summary")
+    updateTabsetPanel(session, "tabs", selected = "Report")
+    output$report <- renderUI(includeHTML("report.html"))
 
     reset("bgFile")
     isBackgroundFile(FALSE)
@@ -1096,9 +1132,9 @@ server <- function(input, output, session) {
     }
   })
   
-########################################################################################
-#------------------------------OUTPUT DEFINITIONS---------------------------------------
-########################################################################################
+################################################################################
+#------------------------------OUTPUT DEFINITIONS-------------------------------
+################################################################################
 
   # download button to extract xlsx diagnostic file from server
   output$download <- downloadHandler(
