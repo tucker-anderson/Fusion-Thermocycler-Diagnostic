@@ -4,7 +4,6 @@ library("shinyFeedback")
 library("stringr")
 library("plyr")
 library("openxlsx")
-library("knitr")
 library("RPostgreSQL")
 
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
@@ -191,6 +190,16 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   isDatabase <- FALSE
+  isDev <- TRUE
+  
+  isPantherSN <- reactiveVal(FALSE)
+  isThermocyclerSN <- reactiveVal(FALSE)
+  isThermocyclerPN <- reactiveVal(FALSE)
+  isPeekFile <- reactiveVal(FALSE)
+  isBackgroundFile <- reactiveVal(FALSE)
+  
+  peekFilemd5 <- reactiveVal("")
+  bgFilemd5 <- reactiveVal("")
   
   if (isDatabase) {
     db <- 'tc_diagnostic'
@@ -202,19 +211,29 @@ server <- function(input, output, session) {
     con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
   }
   
-  isPantherSN <- reactiveVal(FALSE)
-  isThermocyclerSN <- reactiveVal(FALSE)
-  isThermocyclerPN <- reactiveVal(FALSE)
-  isPeekFile <- reactiveVal(FALSE)
-  isBackgroundFile <- reactiveVal(FALSE)
-
-  peekFilemd5 <- reactiveVal("")
-  bgFilemd5 <- reactiveVal("")
+  if (isDev) {
+    updateTextInput(session, "pantherSN", value = "NA")
+    updateTextInput(session, "thermocyclerSN", value = "NA")
+    updateTextInput(session, "thermocyclerPN", value = "NA")
+    
+    updateCheckboxInput(session, "dev", value = TRUE)
+  }
   
 ################################################################################
 #----------------------------FUNCTION DEFINITIONS-------------------------------
 ################################################################################
 
+  ##############################################################################
+  # function to set dev options for ease of unit testing.
+  setDev <- function() {
+    input$dev = TRUE
+    updateCheckboxInput(
+      # session = session,
+      "DEV",
+      value = TRUE
+    )
+  }
+  
   ##############################################################################
   # function to extract data frame from SSW scan files
   # parameter is SSW scan file 
@@ -259,8 +278,11 @@ server <- function(input, output, session) {
                        RED647_ave,
                        RED677_ave)
     
-    stats = data.frame(stats$Well, stats$Mean, stats$Mean.1, stats$Mean.2, stats$Mean.3, stats$Mean.4)
-    names(stats) <- c("Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")
+    stats = data.frame(stats$Well, 
+                      floor((stats$Well - 1) / 5) + 1, 
+                      (stats$Well - 1) %% 5 + 1,
+                      stats$Mean, stats$Mean.1, stats$Mean.2, stats$Mean.3, stats$Mean.4)
+    names(stats) <- c("Overall Well", "Bank", "Bank Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")
     
     return(stats)
   }
@@ -612,23 +634,33 @@ server <- function(input, output, session) {
 
     # val_norm <- function(vals1, vals2, wells, medians){
     normalized_wells <- wells
+    # normalized_wells$Bank <- floor((normalized_wells$Well - 1) / 5) + 1
+    # normalized_wells$BankWell <- (normalized_wells$Well - 1) %% 5 + 1
+    # normalized_wells <- 
+    # normalized_wells <- data.frame(wells$Well, 
+    #                      floor((wells$Well - 1) / 5) + 1, 
+    #                      (wells$Well - 1) %% 5 + 1,
+    #                      wells[,2:6])
+    # normalized_wells <- normalized_wells[, c("Well", "Bank", "BankWell", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")]
+    # names(normalized_wells) <- c("Overall Well", "Bank", "Bank Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")  
+    
     # for each fluorometer color
     for (i in 1:5) {
       # handle if barcode / peek is zero for this fluorometer
       if (vals1[i] == 0 || vals2[i] == 0) {
-        normalized_wells[1:30, i + 1] = 0
+        normalized_wells[1:30, i + 3] = 0
         # normalized_medians[1,i + 1] = 0
         
-        normalized_wells[31:60, i + 1] = 0
+        normalized_wells[31:60, i + 3] = 0
         # normalized_medians[2,i + 1] = 0
       }
       else {
         #calculate percentages for fluorometer 1
-        normalized_wells[1:30, i + 1] = ((wells[1:30, i + 1] - vals1[i]) / vals1[i] ) * 100
+        normalized_wells[1:30, i + 3] = ((wells[1:30, i + 3] - vals1[i]) / vals1[i] ) * 100
         # normalized_medians[1,i + 1] = ((medians[1, i + 1] - vals1[i]) / vals1[i] ) * 100
         
         #calculate percentages for fluorometer 2
-        normalized_wells[31:60, i + 1] = ((wells[31:60, i + 1] - vals2[i]) / vals2[i] ) * 100
+        normalized_wells[31:60, i + 3] = ((wells[31:60, i + 3] - vals2[i]) / vals2[i] ) * 100
         # normalized_medians[2,i + 1] = ((medians[2,i + 1] - vals2[i]) / vals2[i]) * 100
       }
     }
@@ -737,15 +769,15 @@ server <- function(input, output, session) {
     #FORMAT AS NUMBER
     s <- createStyle(numFmt = "0.00")
     addStyle(wb, "Raw Peek", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
-    addStyle(wb, "Raw Peek", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Raw Peek", style = s, rows = 4:63, cols = 10:14, gridExpand = TRUE)
     addStyle(wb, "Raw Background", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
-    addStyle(wb, "Raw Background", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Raw Background", style = s, rows = 4:63, cols = 10:14, gridExpand = TRUE)
     addStyle(wb, "Background Subtracted", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
-    addStyle(wb, "Background Subtracted", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Background Subtracted", style = s, rows = 4:63, cols = 10:14, gridExpand = TRUE)
     addStyle(wb, "Percent Diff", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
-    addStyle(wb, "Percent Diff", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Percent Diff", style = s, rows = 4:63, cols = 10:14, gridExpand = TRUE)
     addStyle(wb, "Percent Diff Subtracted", style = s, rows = 2:3, cols = 2:6, gridExpand = TRUE)
-    addStyle(wb, "Percent Diff Subtracted", style = s, rows = 4:63, cols = 8:12, gridExpand = TRUE)
+    addStyle(wb, "Percent Diff Subtracted", style = s, rows = 4:63, cols = 10:14, gridExpand = TRUE)
 
     barcode_label = c('LED Color', 'FAM', 'HEX', 'ROX', 'RED647', 'RED677')
     
@@ -763,15 +795,15 @@ server <- function(input, output, session) {
     conditionalFormatting(wb, "Percent Diff",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
     conditionalFormatting(wb, "Percent Diff", 2:6, 2:3, rule = "<=-30", style = NULL)
     
-    conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = ">=30", style = NULL)
-    conditionalFormatting(wb, "Percent Diff", 8:12, 4:63, rule = "<=-30", style = NULL)
+    conditionalFormatting(wb, "Percent Diff", 10:14, 4:63, rule = ">=30", style = NULL)
+    conditionalFormatting(wb, "Percent Diff", 10:14, 4:63, rule = "<=-30", style = NULL)
     
     if (is_lid == FALSE) {
       conditionalFormatting(wb, "Percent Diff Subtracted",  cols = 2:6, rows = 2:3, rule = ">=30", style = NULL)
       conditionalFormatting(wb, "Percent Diff Subtracted", 2:6, 2:3, rule = "<=-30", style = NULL)
       
-      conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = ">=30", style = NULL)
-      conditionalFormatting(wb, "Percent Diff Subtracted", 8:12, 4:63, rule = "<=-30", style = NULL)
+      conditionalFormatting(wb, "Percent Diff Subtracted", 10:14, 4:63, rule = ">=30", style = NULL)
+      conditionalFormatting(wb, "Percent Diff Subtracted", 10:14, 4:63, rule = "<=-30", style = NULL)
     }
     return(wb)
   }
