@@ -124,18 +124,6 @@ ui <- fluidPage(
       
       # Output: Tabs w/ plot, summary, and table
       tabsetPanel(id = "tabs", type = "tabs",
-                  tabPanel("Peek & Background",
-                    tabsetPanel(id = "summary_tabs", type = "tabs",
-                     tabPanel("Background Subtracted Peek",
-                              tableOutput("bgSubPeekTable"),
-                              tableOutput("bgSubPeekFLTable")
-                     ),
-                     tabPanel("Background Subtracted Peek % Difference",
-                              tableOutput("bgSubPercentDiffTable"),
-                              tableOutput("bgSubPercentDiffFLTable")
-                     )
-                    ),
-                  ),
                   tabPanel("Background",
                    tabsetPanel(id = "bg_tabs", type = "tabs",
                      tabPanel("Raw Background",
@@ -154,6 +142,18 @@ ui <- fluidPage(
                         tableOutput("percentDiffTable"),
                         tableOutput("percentDiffFLTable"),
                       )
+                    ),
+                  ),
+                  tabPanel(value="peek_and_bg", "Peek & Background",
+                    tabsetPanel(id = "summary_tabs", type = "tabs",
+                     tabPanel("Background Subtracted Peek",
+                              tableOutput("bgSubPeekTable"),
+                              tableOutput("bgSubPeekFLTable")
+                     ),
+                     tabPanel("Background Subtracted Peek % Difference",
+                              tableOutput("bgSubPercentDiffTable"),
+                              tableOutput("bgSubPercentDiffFLTable")
+                     )
                     ),
                   ),
                   tabPanel("Report",
@@ -630,20 +630,9 @@ server <- function(input, output, session) {
     vals1 <- vals[[1]]
     vals2 <- vals[[2]]
     # percent_diff <- val_norm(vals1, vals2, peek_wells, peek_medians)
-    
-
     # val_norm <- function(vals1, vals2, wells, medians){
     normalized_wells <- wells
-    # normalized_wells$Bank <- floor((normalized_wells$Well - 1) / 5) + 1
-    # normalized_wells$BankWell <- (normalized_wells$Well - 1) %% 5 + 1
-    # normalized_wells <- 
-    # normalized_wells <- data.frame(wells$Well, 
-    #                      floor((wells$Well - 1) / 5) + 1, 
-    #                      (wells$Well - 1) %% 5 + 1,
-    #                      wells[,2:6])
-    # normalized_wells <- normalized_wells[, c("Well", "Bank", "BankWell", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")]
-    # names(normalized_wells) <- c("Overall Well", "Bank", "Bank Well", "FAM Mean", "HEX Mean", "ROX Mean", "RED 647 Mean", "RED 677 Mean")  
-    
+
     # for each fluorometer color
     for (i in 1:5) {
       # handle if barcode / peek is zero for this fluorometer
@@ -706,7 +695,7 @@ server <- function(input, output, session) {
   # Function to generate excel workbook with summary of peek and bg scans
   # parameters are input from shiny UI (peek file, bg file, barcodes, peek, if lid is present) 
   # return excel spreadsheet
-  generate_workbook <- function(input_peek, input_bg, barcodes, peek_values, is_lid) {
+  generate_workbook <- function(input_peek, input_bg, barcodes, peek_values, is_lid, is_dev) {
     #first perform some calculations
     peek_dataset <- generate_data(input_peek[["datapath"]])
     peek_wells <- average_wells(peek_dataset)
@@ -805,6 +794,12 @@ server <- function(input, output, session) {
       conditionalFormatting(wb, "Percent Diff Subtracted", 10:14, 4:63, rule = ">=30", style = NULL)
       conditionalFormatting(wb, "Percent Diff Subtracted", 10:14, 4:63, rule = "<=-30", style = NULL)
     }
+    
+    if (is_dev == FALSE) {
+      removeWorksheet(wb,"Percent Diff Subtracted")
+      removeWorksheet(wb, "Background Subtracted")
+    }
+    
     return(wb)
   }
 
@@ -852,6 +847,15 @@ server <- function(input, output, session) {
     toggle("bgMax")
     toggle("peekMin")
     toggle("ledMin")
+    toggle("peek_and_bg")
+    
+    if (input$dev == TRUE) {
+      showTab(inputId = "tabs", target = "peek_and_bg")
+    }
+    
+    if (input$dev == FALSE) {
+      hideTab(inputId = "tabs", target = "peek_and_bg")
+    }
     # else {
     #   hide("lid")
     #   hide("peek1")
@@ -1138,7 +1142,18 @@ server <- function(input, output, session) {
   observeEvent(input$calculate, {
     enable("download")
     updateTabsetPanel(session, "tabs", selected = "Report")
-    output$report <- renderUI(includeHTML("report.html"))
+    output$report <- renderUI(
+      htmlTemplate("report-template.html",
+                 tool_version = version,
+                 panther_sn = input$pantherSN,
+                 tc_sn = input$thermocyclerSN,
+                 tc_pn = input$thermocyclerPN,
+                 tc_firmware = "Unknown",
+                 well_bg_failures = "Placeholder",
+                 well_peek_failures = "Placeholder",
+                 
+      )
+    )
 
     reset("bgFile")
     isBackgroundFile(FALSE)
@@ -1178,7 +1193,7 @@ server <- function(input, output, session) {
         wb <- generate_workbook(input$peekFile, input$bgFile,
                                 c(input$barcode1, input$barcode2),
                                 c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
-                                input$lid)
+                                input$lid, input$dev)
         
         filepath <- "./reports/ThermocyclerDiagnosticReport.xlsx"
         # filepath <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
