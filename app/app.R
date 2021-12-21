@@ -4,11 +4,12 @@ library("shinyFeedback")
 library("stringr")
 library("plyr")
 library("openxlsx")
-library("RPostgreSQL")
+library("htmltools")
+library(DBI)
+
 
 # TODO Integrate openxlsx into download handler better, remove dependency on temporary local file
 # TODO Vectorize some GUI calculations to speed up table generation
-# TODO Save report/data, SN and Thermocycler SN into backend database
 ################################################################################
 #----------------------------UI DEFINITIONS-------------------------------------
 ################################################################################
@@ -107,8 +108,12 @@ ui <- fluidPage(
       # Input: Action Button to run Script
       disabled(actionButton("calculate", "Calculate")),
       
+      # Output: excel Downloader to export excel report
+      disabled(downloadButton("excel_download", "Download Excel Report")),
+      
       # Output: Downloader to export excel report
-      disabled(downloadButton("download", "Download Excel Report")),
+      disabled(downloadButton("html_download", "Download HTML Report")),
+      
       
       fixedRow(
         # column(2),
@@ -190,7 +195,7 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   isDatabase <- FALSE
-  isDev <- TRUE
+  isDev <- FALSE
   
   isPantherSN <- reactiveVal(FALSE)
   isThermocyclerSN <- reactiveVal(FALSE)
@@ -202,11 +207,11 @@ server <- function(input, output, session) {
   bgFilemd5 <- reactiveVal("")
   
   if (isDatabase) {
-    db <- 'tc_diagnostic'
-    host_db <- 'localhost'
+    db <- 'tc'
+    host_db <- '0.0.0.0'
     db_port <- '5432'
-    db_user <- 'shiny_user'
-    db_password <- 'shiny'
+    db_user <- 'tc_shiny_user'
+    db_password <- 'tc_shiny_pass'
     
     con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
   }
@@ -803,6 +808,210 @@ server <- function(input, output, session) {
     return(wb)
   }
 
+  generate_html_report <- function(input) {
+    htmlTemplate("report-template.html",
+                 tool_version = version,
+                 panther_sn = input$pantherSN,
+                 tc_sn = input$thermocyclerSN,
+                 tc_pn = input$thermocyclerPN,
+                 tc_firmware = "Unknown",
+                 bg_1_1 = "",
+                 bg_1_2 = "",
+                 bg_1_3 = "",
+                 bg_1_4 = "",
+                 bg_1_5 = "",
+                 bg_1_6 = "",
+                 bg_1_7 = "",
+                 bg_1_8 = "",
+                 bg_1_9 = "",
+                 bg_1_10 = "",
+                 bg_1_11 = "",
+                 bg_1_12 = "",
+                 bg_2_1 = "",
+                 bg_2_2 = "",
+                 bg_2_3 = "",
+                 bg_2_4 = "",
+                 bg_2_5 = "",
+                 bg_2_6 = "",
+                 bg_2_7 = "",
+                 bg_2_8 = "",
+                 bg_2_9 = "",
+                 bg_2_10 = "",
+                 bg_2_11 = "",
+                 bg_2_12 = "",
+                 bg_3_1 = "",
+                 bg_3_2 = "",
+                 bg_3_3 = "",
+                 bg_3_4 = "",
+                 bg_3_5 = "",
+                 bg_3_6 = "",
+                 bg_3_7 = "",
+                 bg_3_8 = "",
+                 bg_3_9 = "",
+                 bg_3_10 = "",
+                 bg_3_11 = "",
+                 bg_3_12 = "",
+                 bg_4_1 = "",
+                 bg_4_2 = "",
+                 bg_4_3 = "",
+                 bg_4_4 = "",
+                 bg_4_5 = "",
+                 bg_4_6 = "",
+                 bg_4_7 = "",
+                 bg_4_8 = "",
+                 bg_4_9 = "",
+                 bg_4_10 = "",
+                 bg_4_11 = "",
+                 bg_4_12 = "",
+                 bg_5_1 = "",
+                 bg_5_2 = "",
+                 bg_5_3 = "",
+                 bg_5_4 = "",
+                 bg_5_5 = "",
+                 bg_5_6 = "",
+                 bg_5_7 = "",
+                 bg_5_8 = "",
+                 bg_5_9 = "",
+                 bg_5_10 = "",
+                 bg_5_11 = "",
+                 bg_5_12 = "",
+                 peek_1_1 = "",
+                 peek_1_2 = "",
+                 peek_1_3 = "",
+                 peek_1_4 = "",
+                 peek_1_5 = "",
+                 peek_1_6 = "",
+                 peek_1_7 = "",
+                 peek_1_8 = "",
+                 peek_1_9 = "",
+                 peek_1_10 = "",
+                 peek_1_11 = "",
+                 peek_1_12 = "",
+                 peek_2_1 = "",
+                 peek_2_2 = "",
+                 peek_2_3 = "",
+                 peek_2_4 = "",
+                 peek_2_5 = "",
+                 peek_2_6 = "",
+                 peek_2_7 = "",
+                 peek_2_8 = "",
+                 peek_2_9 = "",
+                 peek_2_10 = "",
+                 peek_2_11 = "",
+                 peek_2_12 = "",
+                 peek_3_1 = "",
+                 peek_3_2 = "",
+                 peek_3_3 = "",
+                 peek_3_4 = "",
+                 peek_3_5 = "",
+                 peek_3_6 = "",
+                 peek_3_7 = "",
+                 peek_3_8 = "",
+                 peek_3_9 = "",
+                 peek_3_10 = "",
+                 peek_3_11 = "",
+                 peek_3_12 = "",
+                 peek_4_1 = "P",
+                 peek_4_2 = "",
+                 peek_4_3 = "",
+                 peek_4_4 = "",
+                 peek_4_5 = "",
+                 peek_4_6 = "",
+                 peek_4_7 = "",
+                 peek_4_8 = "",
+                 peek_4_9 = "",
+                 peek_4_10 = "",
+                 peek_4_11 = "",
+                 peek_4_12 = "",
+                 peek_5_1 = "",
+                 peek_5_2 = "",
+                 peek_5_3 = "",
+                 peek_5_4 = "",
+                 peek_5_5 = "",
+                 peek_5_6 = "",
+                 peek_5_7 = "",
+                 peek_5_8 = "",
+                 peek_5_9 = "",
+                 peek_5_10 = "",
+                 peek_5_11 = "",
+                 peek_5_12 = paste(c(paste0(c("FAM: ",  "Placeholder")), "Placeholder", "Placeholder", "Placeholder", "Placeholder"), collapse = "\n"),
+                 
+                 fl_1 = "",
+                 fl_2 = "",
+                 
+                 decay_1_1 = "",
+                 decay_1_2 = "",
+                 decay_1_3 = "",
+                 decay_1_4 = "",
+                 decay_1_5 = "",
+                 decay_1_6 = "",
+                 decay_1_7 = "",
+                 decay_1_8 = "",
+                 decay_1_9 = "",
+                 decay_1_10 = "",
+                 decay_1_11 = "",
+                 decay_1_12 = "",
+                 decay_2_1 = "",
+                 decay_2_2 = "",
+                 decay_2_3 = "",
+                 decay_2_4 = "",
+                 decay_2_5 = "",
+                 decay_2_6 = "",
+                 decay_2_7 = "",
+                 decay_2_8 = "",
+                 decay_2_9 = "",
+                 decay_2_10 = "",
+                 decay_2_11 = "",
+                 decay_2_12 = "",
+                 decay_3_1 = "",
+                 decay_3_2 = "",
+                 decay_3_3 = "",
+                 decay_3_4 = "",
+                 decay_3_5 = "",
+                 decay_3_6 = "",
+                 decay_3_7 = "",
+                 decay_3_8 = "",
+                 decay_3_9 = "",
+                 decay_3_10 = "",
+                 decay_3_11 = "",
+                 decay_3_12 = "",
+                 decay_4_1 = "P",
+                 decay_4_2 = "",
+                 decay_4_3 = "",
+                 decay_4_4 = "",
+                 decay_4_5 = "",
+                 decay_4_6 = "",
+                 decay_4_7 = "",
+                 decay_4_8 = "",
+                 decay_4_9 = "",
+                 decay_4_10 = "",
+                 decay_4_11 = "",
+                 decay_4_12 = "",
+                 decay_5_1 = "",
+                 decay_5_2 = "",
+                 decay_5_3 = "",
+                 decay_5_4 = "",
+                 decay_5_5 = "",
+                 decay_5_6 = "",
+                 decay_5_7 = "",
+                 decay_5_8 = "",
+                 decay_5_9 = "",
+                 decay_5_10 = "",
+                 decay_5_11 = "",
+                 decay_5_12 = paste(c(paste0(c("FAM: ",  "Placeholder")), paste0(c("FAM: ",  "Placeholder")), paste0(c("FAM: ",  "Placeholder")), paste0(c("FAM: ",  "Placeholder")), paste0(c("FAM: ",  "Placeholder"))), collapse = "\n"),
+                 
+                 decay_1 = "",
+                 decay_2 = "",
+                 
+                 date = as.character(date()),
+                 
+                 result = "PASS",
+                 # result_color = 'green',
+                 name = "Placeholder McPlaceholder"
+                 
+    )
+  }
+
   # check_wells <- function(wells, threshold) {
   #   
   # }
@@ -816,17 +1025,53 @@ server <- function(input, output, session) {
   # parameters are database connection and Panther SN as string 
   # return nothing
   update_database_panther_sn <- function(conn, pantherSN) {
+    # dbSendQuery(conn, paste0("CREATE TABLE IF NOT EXISTS public.panther_info
+    # (
+    #   id SERIAL PRIMARY KEY,
+    #   panther_sn VARCHAR(10)
+    # )
+    # "))
     dbSendQuery(conn, paste0("INSERT INTO public.panther_info (panther_sn) VALUES ('", pantherSN, "') ON CONFLICT (panther_sn) DO NOTHING"))
   }
   
   ##############################################################################
   # Function to update database with Fusion SN
-  # parameters are database connection and Fusion SN as string 
+  # parameters are database connection and Fusion SN and PN as string 
   # return nothing
-  update_database_tc_sn <- function(conn, tcSN) {
+  update_database_tc_sn <- function(conn, tcSN, tcPN) {
+    # dbSendQuery(conn, paste0("CREATE TABLE IF NOT EXISTS public.tc_info
+    # (
+    #   id SERIAL PRIMARY KEY,
+    #   tc_sn VARCHAR(10),
+    #   tc_pn VARCHAR(20)
+    # )
+    # "))
+    
     #ensure input is all uppercase to avoid casing conflicts in database
     tcSN <- toupper(tcSN)
-    dbSendQuery(conn, paste0("INSERT INTO public.tc_info (tc_sn) VALUES ('", tcSN, "') ON CONFLICT (tc_sn) DO NOTHING"))
+    tcPN <- toupper(tcPN)
+    dbSendQuery(conn, paste0("INSERT INTO public.tc_info (tc_sn, tc_pn) VALUES ('",paste(tcSN,"'",",","'",tcPN,),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING"))
+  }
+  
+  ##############################################################################
+  # Function to update database with SSW scan files
+  # parameters are database connection and scan file path, scan file type (eg bg or peek) and md5 checksum of file
+  # return nothing
+  update_database_scan_file <- function(conn, fp, filetype, md5) {
+    
+    if (md5 != "") {
+      # dbSendQuery(conn, paste0("CREATE TABLE IF NOT EXISTS public.scan_files
+      # (
+      #   md5 VARCHAR(32) PRIMARY KEY,
+      #   file_type VARCHAR(4),
+      #   file BYTEA
+      # )
+      # "))
+      
+      dbSendQuery(conn, paste0("INSERT INTO public.scan_files (md5, file_type, file) VALUES ('",paste(md5,"'",",","'",file_type,"'",",","'", fp),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING"))
+    }
+
+    
   }
 
 ################################################################################
@@ -1140,147 +1385,10 @@ server <- function(input, output, session) {
   ##############################################################################
   # Event Observers for diagnostic calculation and download
   observeEvent(input$calculate, {
-    enable("download")
+    enable("excel_download")
+    enable("html_download")
     updateTabsetPanel(session, "tabs", selected = "Report")
-    output$report <- renderUI(
-      htmlTemplate("report-template.html",
-                 tool_version = version,
-                 panther_sn = input$pantherSN,
-                 tc_sn = input$thermocyclerSN,
-                 tc_pn = input$thermocyclerPN,
-                 tc_firmware = "Unknown",
-                 bg_1_1 = "Placeholder",
-                 bg_1_2 = "Placeholder",
-                 bg_1_3 = "Placeholder",
-                 bg_1_4 = "Placeholder",
-                 bg_1_5 = "Placeholder",
-                 bg_1_6 = "Placeholder",
-                 bg_1_7 = "Placeholder",
-                 bg_1_8 = "Placeholder",
-                 bg_1_9 = "Placeholder",
-                 bg_1_10 = "Placeholder",
-                 bg_1_11 = "Placeholder",
-                 bg_1_12 = "Placeholder",
-                 bg_2_1 = "Placeholder",
-                 bg_2_2 = "Placeholder",
-                 bg_2_3 = "Placeholder",
-                 bg_2_4 = "Placeholder",
-                 bg_2_5 = "Placeholder",
-                 bg_2_6 = "Placeholder",
-                 bg_2_7 = "Placeholder",
-                 bg_2_8 = "Placeholder",
-                 bg_2_9 = "Placeholder",
-                 bg_2_10 = "Placeholder",
-                 bg_2_11 = "Placeholder",
-                 bg_2_12 = "Placeholder",
-                 bg_3_1 = "Placeholder",
-                 bg_3_2 = "Placeholder",
-                 bg_3_3 = "Placeholder",
-                 bg_3_4 = "Placeholder",
-                 bg_3_5 = "Placeholder",
-                 bg_3_6 = "Placeholder",
-                 bg_3_7 = "Placeholder",
-                 bg_3_8 = "Placeholder",
-                 bg_3_9 = "Placeholder",
-                 bg_3_10 = "Placeholder",
-                 bg_3_11 = "Placeholder",
-                 bg_3_12 = "Placeholder",
-                 bg_4_1 = "Placeholder",
-                 bg_4_2 = "Placeholder",
-                 bg_4_3 = "Placeholder",
-                 bg_4_4 = "Placeholder",
-                 bg_4_5 = "Placeholder",
-                 bg_4_6 = "Placeholder",
-                 bg_4_7 = "Placeholder",
-                 bg_4_8 = "Placeholder",
-                 bg_4_9 = "Placeholder",
-                 bg_4_10 = "Placeholder",
-                 bg_4_11 = "Placeholder",
-                 bg_4_12 = "Placeholder",
-                 bg_5_1 = "Placeholder",
-                 bg_5_2 = "Placeholder",
-                 bg_5_3 = "Placeholder",
-                 bg_5_4 = "Placeholder",
-                 bg_5_5 = "Placeholder",
-                 bg_5_6 = "Placeholder",
-                 bg_5_7 = "Placeholder",
-                 bg_5_8 = "Placeholder",
-                 bg_5_9 = "Placeholder",
-                 bg_5_10 = "Placeholder",
-                 bg_5_11 = "Placeholder",
-                 bg_5_12 = "Placeholder",
-                 peek_1_1 = "Placeholder",
-                 peek_1_2 = "Placeholder",
-                 peek_1_3 = "Placeholder",
-                 peek_1_4 = "Placeholder",
-                 peek_1_5 = "Placeholder",
-                 peek_1_6 = "Placeholder",
-                 peek_1_7 = "Placeholder",
-                 peek_1_8 = "Placeholder",
-                 peek_1_9 = "Placeholder",
-                 peek_1_10 = "Placeholder",
-                 peek_1_11 = "Placeholder",
-                 peek_1_12 = "Placeholder",
-                 peek_2_1 = "Placeholder",
-                 peek_2_2 = "Placeholder",
-                 peek_2_3 = "Placeholder",
-                 peek_2_4 = "Placeholder",
-                 peek_2_5 = "Placeholder",
-                 peek_2_6 = "Placeholder",
-                 peek_2_7 = "Placeholder",
-                 peek_2_8 = "Placeholder",
-                 peek_2_9 = "Placeholder",
-                 peek_2_10 = "Placeholder",
-                 peek_2_11 = "Placeholder",
-                 peek_2_12 = "Placeholder",
-                 peek_3_1 = "Placeholder",
-                 peek_3_2 = "Placeholder",
-                 peek_3_3 = "Placeholder",
-                 peek_3_4 = "Placeholder",
-                 peek_3_5 = "Placeholder",
-                 peek_3_6 = "Placeholder",
-                 peek_3_7 = "Placeholder",
-                 peek_3_8 = "Placeholder",
-                 peek_3_9 = "Placeholder",
-                 peek_3_10 = "Placeholder",
-                 peek_3_11 = "Placeholder",
-                 peek_3_12 = "Placeholder",
-                 peek_4_1 = "P",
-                 peek_4_2 = "Placeholder",
-                 peek_4_3 = "Placeholder",
-                 peek_4_4 = "Placeholder",
-                 peek_4_5 = "Placeholder",
-                 peek_4_6 = "Placeholder",
-                 peek_4_7 = "Placeholder",
-                 peek_4_8 = "Placeholder",
-                 peek_4_9 = "Placeholder",
-                 peek_4_10 = "Placeholder",
-                 peek_4_11 = "Placeholder",
-                 peek_4_12 = "Placeholder",
-                 peek_5_1 = "Placeholder",
-                 peek_5_2 = "Placeholder",
-                 peek_5_3 = "Placeholder",
-                 peek_5_4 = "Placeholder",
-                 peek_5_5 = "Placeholder",
-                 peek_5_6 = "Placeholder",
-                 peek_5_7 = "Placeholder",
-                 peek_5_8 = "Placeholder",
-                 peek_5_9 = "Placeholder",
-                 peek_5_10 = "Placeholder",
-                 peek_5_11 = "Placeholder",
-                 peek_5_12 = paste(c("Placeholder", "Placeholder", "Placeholder", "Placeholder", "Placeholder"), collapse = "\n"),
-                 
-                 fl_1 = "Placeholder",
-                 fl_2 = "Placeholder",
-                 
-                 date = as.character(date()),
-                 
-                 result = "PASS",
-                 # result_color = 'green',
-                 name = "Placeholder"
-                 
-      )
-    )
+    output$report <- renderUI(generate_html_report(input))
 
     reset("bgFile")
     isBackgroundFile(FALSE)
@@ -1291,8 +1399,7 @@ server <- function(input, output, session) {
     
     if (isDatabase) {
       update_database_panther_sn(con, input$pantherSN)
-      update_database_tc_sn(con, input$thermocyclerSN)
-      #TODO update db with TC PN as well
+      update_database_tc_sn(con, input$thermocyclerSN, input$thermocyclerPN)
     }
   })
   
@@ -1311,7 +1418,7 @@ server <- function(input, output, session) {
 ################################################################################
 
   # download button to extract xlsx diagnostic file from server
-  output$download <- downloadHandler(
+  output$excel_download <- downloadHandler(
       filename = "ThermocyclerDiagnosticReport.xlsx",
       content = function(file) {
         # Copy the report file to a temporary directory before processing it, in
@@ -1335,6 +1442,29 @@ server <- function(input, output, session) {
         # file.copy("ThermocyclerDiagnosticReport.xlsx", tempReport, overwrite = TRUE)
       }
   )
+  # download button to extract html diagnostic report from server
+  output$html_download <- downloadHandler(
+    filename = "ThermocyclerDiagnosticReport.html",
+    content = function(file) {
+      # Copy the report file to a temporary directory before processing it, in
+      # case we don't have write permissions to the current working dir (which
+      # can happen when deployed).
+      report <- generate_html_report(input)
+      
+      filepath <- "./reports/ThermocyclerDiagnosticReport.html"
+      # filepath <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
+      
+      if (file.exists(filepath)) {
+        file.remove(filepath)
+      }
+      
+      # tempReport <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
+      save_html(report, filepath)
+      file.copy("./reports/ThermocyclerDiagnosticReport.html", file)
+      # file.copy("ThermocyclerDiagnosticReport.xlsx", tempReport, overwrite = TRUE)
+    }
+  )
+  
 }
 
 shinyApp(ui = ui, server = server)
