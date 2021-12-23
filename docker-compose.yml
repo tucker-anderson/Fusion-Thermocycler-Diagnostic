@@ -1,13 +1,37 @@
-version: '3'
+version: '3.6'
 
 services:
   database:
-    image: "postgres" # use latest official postgres version
-    env_file:
-      - database.env # configure postgres
+    image: postgres
+    # build:
+    #   context: ./postgres
+    #   dockerfile: Dockerfile_postgres
+    # restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    # expose:
+    #   - 5432
+    ports:
+      - 5432:5432
     volumes:
-      - database-data:/var/lib/postgresql/data/ # persist data even if container shuts down
+      # Uncomment below to maintain persistent data
+      - ./database-data:/var/lib/postgresql/data/
+      # Uncomment bellow to intialize the container with data by creating the respective file
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   restart: always
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@admin.com
+  #     PGADMIN_DEFAULT_PASSWORD: root
+  #   ports:
+  #     - 5050:80
+  
   tc:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports: 
-      - "3838:3838"
+      - 3838:3838
