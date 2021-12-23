@@ -65,7 +65,7 @@ ui <- fluidPage(
       # Input: Select Lid Presence
       fixedRow(
         # column(2),
-        column(6, radioButtons("lid", "Lid Present",
+        column(10, radioButtons("lid", "Lid Present",
                  choices = c("No Lid (Peek sheet used)" = FALSE, "Integrated Lid" = TRUE),
                  inline = TRUE,
                  selected = TRUE),
@@ -97,9 +97,10 @@ ui <- fluidPage(
       ),
       
       fixedRow(
-        column(3, numericInput("bgMax", "Background Max", value = 1.80, min = 0.0, max = 5.0, step = 0.1), offset = 1),
-        column(3, numericInput("peekMin", "Peek Min", value = 0.60, min = 0.0, max = 1.0, step = 0.1), offset = 1),
-        column(3, numericInput("ledMin", "LED Min", value = 0.40, min = 0.0, max = 1.0, step = 0.1), offset = 1),
+        column(4, numericInput("bgMax", "Background Max", value = 1.80, min = 0.0, max = 5.0, step = 0.1), offset = 1),
+        column(4, numericInput("peekMin", "Peek Min", value = 0.60, min = 0.0, max = 1.0, step = 0.1), offset = 1),
+        column(4, numericInput("ledMin", "LED Min", value = 0.40, min = 0.0, max = 1.0, step = 0.1), offset = 1),
+        column(4, numericInput("peekDecay", "peek Decay", value = 0.30, min = 0.0, max = 1.0, step = 0.1), offset = 1)
       ),
       
       # Horizontal line
@@ -194,7 +195,7 @@ ui <- fluidPage(
 ################################################################################
 
 server <- function(input, output, session) {
-  isDatabase <- FALSE
+  isDatabase <- TRUE
   isDev <- FALSE
   
   isPantherSN <- reactiveVal(FALSE)
@@ -808,206 +809,403 @@ server <- function(input, output, session) {
     return(wb)
   }
 
+  ##############################################################################
+  # Function to generate dataframe of bg failures (as per manufacturing spec)
+  # parameters are input from shiny UI and bg manufacturing threshold 
+  # return dataframe
+  get_bg_failures <- function(input, threshold) {
+    bg_dataset <- generate_data(input$bgFile[["datapath"]])
+    threshold <- as.double(threshold)
+
+    placeholderBank <- c("","","","","")
+    bg_failures <- data.frame(placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank)
+    for (i in 0:4) {
+      bg_visual <- generate_data_visual(bg_dataset, color = i, fun = "mean", FL = FALSE)[,-1]
+      bg_visual_fl <- generate_data_visual(bg_dataset, color = i, fl_fun= "median", FL = TRUE)[,-1]
+      bg_visual[1:5, 1:6] <- bg_visual[1:5, 1:6] / bg_visual_fl[1]
+      bg_visual[1:5, 7:12] <- bg_visual[1:5, 7:12] / bg_visual_fl[2]
+      
+      c <- switch(i+1, "FAM", "HEX", "ROX", "647", "677")
+      
+      for (j in 1:12) {
+        bg_failures[,j] <- ifelse(bg_visual[,j] > threshold, 
+                                    str_c(bg_failures[,j], c, ": ", formatC(bg_visual[,j], 2, format = "f"), "\n"), 
+                                    str_c(bg_failures[,j], ""))
+      }
+    }
+    return(bg_failures)
+  }
+
+  ##############################################################################
+  # Function to generate dataframe of peek failures (as per manufacturing spec)
+  # parameters are input from shiny UI and peek manufacturing threshold 
+  # return dataframe
+  get_peek_failures <- function(input, threshold) {
+    peek_dataset <- generate_data(input$peekFile[["datapath"]])
+    threshold <- as.double(threshold)
+
+    placeholderBank <- c("","","","","")
+    peek_failures <- data.frame(placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank)
+    for (i in 0:4) {
+      peek_visual <- generate_data_visual(peek_dataset, color = i, fun = "mean", FL = FALSE)[,-1]
+      peek_visual_fl <- generate_data_visual(peek_dataset, color = i, fl_fun= "mean", FL = TRUE)[,-1]
+      peek_visual[1:5, 1:6] <- (peek_visual_fl[1] - peek_visual[1:5, 1:6]) / peek_visual_fl[1]
+      peek_visual[1:5, 7:12] <- (peek_visual_fl[2] - peek_visual[1:5, 7:12]) / peek_visual_fl[2]
+      
+      c <- switch(i+1, "FAM", "HEX", "ROX", "647", "677")
+      
+      for (j in 1:12) {
+        peek_failures[,j] <- ifelse(peek_visual[,j] > threshold, 
+                                    str_c(peek_failures[,j], c, ": ", formatC(peek_visual[,j], 2, format = "f"), "\n"), 
+                                    str_c(peek_failures[,j], ""))
+      }
+    }
+    return(peek_failures)
+  }
+
+  ##############################################################################
+  # Function to generate dataframe of peek decay failures (as per Ian's spec)
+  # parameters are input from shiny UI and peek manufacturing threshold 
+  # return dataframe
+  get_decay_failures <- function(input, threshold) {
+    peek_dataset <- generate_data(input$peekFile[["datapath"]])
+    vals <- check_peek(c(input$barcode1, input$barcode2), c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5), input$lid)
+    percent_diff <- generate_percent_diff(peek_dataset, vals)
+
+    threshold <- as.double(threshold)
+
+    placeholderBank <- c("","","","","")
+    decay_failures <- data.frame(placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank,
+                                placeholderBank)
+    for (i in 0:4) {
+      percent_diff_visual <- generate_data_visual(percent_diff, color = i)[,-1]
+      # peek_visual <- generate_data_visual(peek_dataset, color = i, fun = "mean", FL = FALSE)[,-1]
+      # peek_visual[1:5, 1:6] <- (peek_visual_fl[1] - peek_visual[1:5, 1:6]) / peek_visual_fl[1]
+      # peek_visual[1:5, 7:12] <- (peek_visual_fl[2] - peek_visual[1:5, 7:12]) / peek_visual_fl[2]
+      
+      c <- switch(i+1, "FAM", "HEX", "ROX", "647", "677")
+      
+      for (j in 1:12) {
+        decay_failures[,j] <- ifelse(abs(percent_diff_visual[,j]) >= (threshold*100), 
+                                    str_c(decay_failures[,j], c, ": ", formatC(percent_diff_visual[,j], 2, format = "f"), "\n"), 
+                                    str_c(decay_failures[,j], ""))
+      }
+    }
+    return(decay_failures)
+  }
+
+    ##############################################################################
+  # Function to generate dataframe of peek decay failures (as per Ian's spec)
+  # parameters are input from shiny UI and peek manufacturing threshold 
+  # return dataframe
+  get_decay_fl_failures <- function(input, threshold) {
+    peek_dataset <- generate_data(input$peekFile[["datapath"]])
+    vals <- check_peek(c(input$barcode1, input$barcode2), c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5), input$lid)
+    percent_diff <- generate_percent_diff(peek_dataset, vals)
+
+    threshold <- as.double(threshold)
+
+    placeholderFl <- c("")
+    decay_fl_failures <- data.frame(placeholderFl,
+                                placeholderFl)
+    for (i in 0:4) {
+      peek_visual_fl <- generate_data_visual(percent_diff, color = i, fun = "median", FL = TRUE)[,-1]
+      
+      c <- switch(i+1, "FAM", "HEX", "ROX", "647", "677")
+      
+      for (j in 1:2) {
+        decay_fl_failures[1,j] <- ifelse(peek_visual_fl[j] >= (threshold*100), 
+                                    str_c(decay_fl_failures[1,j], c, ": ", formatC(peek_visual_fl[j], 2, format = "f"), "\n"), 
+                                    str_c(decay_fl_failures[1,j], ""))
+      }
+    }
+    return(decay_fl_failures)
+  }
+  #   for (i in 0:4) {
+  #     percent_diff_visual <- generate_data_visual(percent_diff, color = i)[,-1]
+  #     # peek_visual <- generate_data_visual(peek_dataset, color = i, fun = "mean", FL = FALSE)[,-1]
+  #     # peek_visual[1:5, 1:6] <- (peek_visual_fl[1] - peek_visual[1:5, 1:6]) / peek_visual_fl[1]
+  #     # peek_visual[1:5, 7:12] <- (peek_visual_fl[2] - peek_visual[1:5, 7:12]) / peek_visual_fl[2]
+      
+  #     c <- switch(i+1, "FAM", "HEX", "ROX", "647", "677")
+      
+  #     for (j in 1:12) {
+  #       decay_failures[,j] <- ifelse(abs(percent_diff_visual[,j]) >= (threshold*100), 
+  #                                   str_c(decay_failures[,j], c, ": ", formatC(percent_diff_visual[,j], 2, format = "f"), "\n"), 
+  #                                   str_c(decay_failures[,j], ""))
+  #     }
+  #   }
+  #   return(decay_failures)
+  # }
+
+  ##############################################################################
+  # Function to generate dataframe of LED failures (as per manufacturing spec)
+  # parameters are input from shiny UI and LED manufacturing threshold 
+  # return dataframe
+  get_led_failures <- function(input, threshold) {
+    peek_dataset <- generate_data(input$peekFile[["datapath"]])
+    vals <- check_peek(c(input$barcode1, input$barcode2), c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5), input$lid)
+    threshold <- as.double(threshold)
+
+    placeholderFl <- c("")
+    led_failures <- data.frame(placeholderFl,
+                                placeholderFl)
+    for (i in 0:4) {
+      peek_visual_fl <- generate_data_visual(peek_dataset, color = i, fun = "mean", FL = TRUE)[,-1]
+      peek_visual_fl[1] <- peek_visual_fl[1] / vals[[1]][i+1]
+      peek_visual_fl[2] <- peek_visual_fl[2] / vals[[2]][i+1]
+      
+      c <- switch(i+1, "FAM", "HEX", "ROX", "647", "677")
+      
+      for (j in 1:2) {
+        led_failures[1,j] <- ifelse(peek_visual_fl[j] < threshold, 
+                                    str_c(led_failures[1,j], c, ": ", formatC(peek_visual_fl[j], 2, format = "f"), "\n"), 
+                                    str_c(led_failures[1,j], ""))
+      }
+    }
+    return(led_failures)
+  }
+
   generate_html_report <- function(input) {
+    peek_failures <- get_peek_failures(input, input$peekMin)
+    bg_failures <- get_bg_failures(input, input$bgMax)
+    led_failures <- get_led_failures(input, input$ledMin)
+    decay_failures <- get_decay_failures(input, input$peekDecay)
+    decay_fl_failures <- get_decay_fl_failures(input, input$peekDecay)
+    
     htmlTemplate("report-template.html",
                  tool_version = version,
                  panther_sn = input$pantherSN,
                  tc_sn = input$thermocyclerSN,
                  tc_pn = input$thermocyclerPN,
                  tc_firmware = "Unknown",
-                 bg_1_1 = "",
-                 bg_1_2 = "",
-                 bg_1_3 = "",
-                 bg_1_4 = "",
-                 bg_1_5 = "",
-                 bg_1_6 = "",
-                 bg_1_7 = "",
-                 bg_1_8 = "",
-                 bg_1_9 = "",
-                 bg_1_10 = "",
-                 bg_1_11 = "",
-                 bg_1_12 = "",
-                 bg_2_1 = "",
-                 bg_2_2 = "",
-                 bg_2_3 = "",
-                 bg_2_4 = "",
-                 bg_2_5 = "",
-                 bg_2_6 = "",
-                 bg_2_7 = "",
-                 bg_2_8 = "",
-                 bg_2_9 = "",
-                 bg_2_10 = "",
-                 bg_2_11 = "",
-                 bg_2_12 = "",
-                 bg_3_1 = "",
-                 bg_3_2 = "",
-                 bg_3_3 = "",
-                 bg_3_4 = "",
-                 bg_3_5 = "",
-                 bg_3_6 = "",
-                 bg_3_7 = "",
-                 bg_3_8 = "",
-                 bg_3_9 = "",
-                 bg_3_10 = "",
-                 bg_3_11 = "",
-                 bg_3_12 = "",
-                 bg_4_1 = "",
-                 bg_4_2 = "",
-                 bg_4_3 = "",
-                 bg_4_4 = "",
-                 bg_4_5 = "",
-                 bg_4_6 = "",
-                 bg_4_7 = "",
-                 bg_4_8 = "",
-                 bg_4_9 = "",
-                 bg_4_10 = "",
-                 bg_4_11 = "",
-                 bg_4_12 = "",
-                 bg_5_1 = "",
-                 bg_5_2 = "",
-                 bg_5_3 = "",
-                 bg_5_4 = "",
-                 bg_5_5 = "",
-                 bg_5_6 = "",
-                 bg_5_7 = "",
-                 bg_5_8 = "",
-                 bg_5_9 = "",
-                 bg_5_10 = "",
-                 bg_5_11 = "",
-                 bg_5_12 = "",
-                 peek_1_1 = "",
-                 peek_1_2 = "",
-                 peek_1_3 = "",
-                 peek_1_4 = "",
-                 peek_1_5 = "",
-                 peek_1_6 = "",
-                 peek_1_7 = "",
-                 peek_1_8 = "",
-                 peek_1_9 = "",
-                 peek_1_10 = "",
-                 peek_1_11 = "",
-                 peek_1_12 = "",
-                 peek_2_1 = "",
-                 peek_2_2 = "",
-                 peek_2_3 = "",
-                 peek_2_4 = "",
-                 peek_2_5 = "",
-                 peek_2_6 = "",
-                 peek_2_7 = "",
-                 peek_2_8 = "",
-                 peek_2_9 = "",
-                 peek_2_10 = "",
-                 peek_2_11 = "",
-                 peek_2_12 = "",
-                 peek_3_1 = "",
-                 peek_3_2 = "",
-                 peek_3_3 = "",
-                 peek_3_4 = "",
-                 peek_3_5 = "",
-                 peek_3_6 = "",
-                 peek_3_7 = "",
-                 peek_3_8 = "",
-                 peek_3_9 = "",
-                 peek_3_10 = "",
-                 peek_3_11 = "",
-                 peek_3_12 = "",
-                 peek_4_1 = "P",
-                 peek_4_2 = "",
-                 peek_4_3 = "",
-                 peek_4_4 = "",
-                 peek_4_5 = "",
-                 peek_4_6 = "",
-                 peek_4_7 = "",
-                 peek_4_8 = "",
-                 peek_4_9 = "",
-                 peek_4_10 = "",
-                 peek_4_11 = "",
-                 peek_4_12 = "",
-                 peek_5_1 = "",
-                 peek_5_2 = "",
-                 peek_5_3 = "",
-                 peek_5_4 = "",
-                 peek_5_5 = "",
-                 peek_5_6 = "",
-                 peek_5_7 = "",
-                 peek_5_8 = "",
-                 peek_5_9 = "",
-                 peek_5_10 = "",
-                 peek_5_11 = "",
-                 peek_5_12 = paste(c(paste0(c("FAM: ",  "Placeholder")), "Placeholder", "Placeholder", "Placeholder", "Placeholder"), collapse = "\n"),
+                 bg_1_1 = bg_failures[1,1],
+                 bg_1_2 = bg_failures[1,2],
+                 bg_1_3 = bg_failures[1,3],
+                 bg_1_4 = bg_failures[1,4],
+                 bg_1_5 = bg_failures[1,5],
+                 bg_1_6 = bg_failures[1,6],
+                 bg_1_7 = bg_failures[1,7],
+                 bg_1_8 = bg_failures[1,8],
+                 bg_1_9 = bg_failures[1,9],
+                 bg_1_10 = bg_failures[1,10],
+                 bg_1_11 = bg_failures[1,11],
+                 bg_1_12 = bg_failures[1,12],
+                 bg_2_1 = bg_failures[2,1],
+                 bg_2_2 = bg_failures[2,2],
+                 bg_2_3 = bg_failures[2,3],
+                 bg_2_4 = bg_failures[2,4],
+                 bg_2_5 = bg_failures[2,5],
+                 bg_2_6 = bg_failures[2,6],
+                 bg_2_7 = bg_failures[2,7],
+                 bg_2_8 = bg_failures[2,8],
+                 bg_2_9 = bg_failures[2,9],
+                 bg_2_10 = bg_failures[2,10],
+                 bg_2_11 = bg_failures[2,11],
+                 bg_2_12 = bg_failures[2,12],
+                 bg_3_1 = bg_failures[3,1],
+                 bg_3_2 = bg_failures[3,2],
+                 bg_3_3 = bg_failures[3,3],
+                 bg_3_4 = bg_failures[3,4],
+                 bg_3_5 = bg_failures[3,5],
+                 bg_3_6 = bg_failures[3,6],
+                 bg_3_7 = bg_failures[3,7],
+                 bg_3_8 = bg_failures[3,8],
+                 bg_3_9 = bg_failures[3,9],
+                 bg_3_10 = bg_failures[3,10],
+                 bg_3_11 = bg_failures[3,11],
+                 bg_3_12 = bg_failures[3,12],
+                 bg_4_1 = bg_failures[4,1],
+                 bg_4_2 = bg_failures[4,2],
+                 bg_4_3 = bg_failures[4,3],
+                 bg_4_4 = bg_failures[4,4],
+                 bg_4_5 = bg_failures[4,5],
+                 bg_4_6 = bg_failures[4,6],
+                 bg_4_7 = bg_failures[4,7],
+                 bg_4_8 = bg_failures[4,8],
+                 bg_4_9 = bg_failures[4,9],
+                 bg_4_10 = bg_failures[4,10],
+                 bg_4_11 = bg_failures[4,11],
+                 bg_4_12 = bg_failures[4,12],
+                 bg_5_1 = bg_failures[5,1],
+                 bg_5_2 = bg_failures[5,2],
+                 bg_5_3 = bg_failures[5,3],
+                 bg_5_4 = bg_failures[5,4],
+                 bg_5_5 = bg_failures[5,5],
+                 bg_5_6 = bg_failures[5,6],
+                 bg_5_7 = bg_failures[5,7],
+                 bg_5_8 = bg_failures[5,8],
+                 bg_5_9 = bg_failures[5,9],
+                 bg_5_10 = bg_failures[5,10],
+                 bg_5_11 = bg_failures[5,11],
+                 bg_5_12 = bg_failures[5,12],
+                 peek_1_1 = peek_failures[1,1],
+                 peek_1_2 = peek_failures[1,2],
+                 peek_1_3 = peek_failures[1,3],
+                 peek_1_4 = peek_failures[1,4],
+                 peek_1_5 = peek_failures[1,5],
+                 peek_1_6 = peek_failures[1,6],
+                 peek_1_7 = peek_failures[1,7],
+                 peek_1_8 = peek_failures[1,8],
+                 peek_1_9 = peek_failures[1,9],
+                 peek_1_10 = peek_failures[1,10],
+                 peek_1_11 = peek_failures[1,11],
+                 peek_1_12 = peek_failures[1,12],
+                 peek_2_1 = peek_failures[2,1],
+                 peek_2_2 = peek_failures[2,2],
+                 peek_2_3 = peek_failures[2,3],
+                 peek_2_4 = peek_failures[2,4],
+                 peek_2_5 = peek_failures[2,5],
+                 peek_2_6 = peek_failures[2,6],
+                 peek_2_7 = peek_failures[2,7],
+                 peek_2_8 = peek_failures[2,8],
+                 peek_2_9 = peek_failures[2,9],
+                 peek_2_10 = peek_failures[2,10],
+                 peek_2_11 = peek_failures[2,11],
+                 peek_2_12 = peek_failures[2,12],
+                 peek_3_1 = peek_failures[3,1],
+                 peek_3_2 = peek_failures[3,2],
+                 peek_3_3 = peek_failures[3,3],
+                 peek_3_4 = peek_failures[3,4],
+                 peek_3_5 = peek_failures[3,5],
+                 peek_3_6 = peek_failures[3,6],
+                 peek_3_7 = peek_failures[3,7],
+                 peek_3_8 = peek_failures[3,8],
+                 peek_3_9 = peek_failures[3,9],
+                 peek_3_10 = peek_failures[3,10],
+                 peek_3_11 = peek_failures[3,11],
+                 peek_3_12 = peek_failures[3,12],
+                 peek_4_1 = peek_failures[4,1],
+                 peek_4_2 = peek_failures[4,2],
+                 peek_4_3 = peek_failures[4,3],
+                 peek_4_4 = peek_failures[4,4],
+                 peek_4_5 = peek_failures[4,5],
+                 peek_4_6 = peek_failures[4,6],
+                 peek_4_7 = peek_failures[4,7],
+                 peek_4_8 = peek_failures[4,8],
+                 peek_4_9 = peek_failures[4,9],
+                 peek_4_10 = peek_failures[4,10],
+                 peek_4_11 = peek_failures[4,11],
+                 peek_4_12 = peek_failures[4,12],
+                 peek_5_1 = peek_failures[5,1],
+                 peek_5_2 = peek_failures[5,2],
+                 peek_5_3 = peek_failures[5,3],
+                 peek_5_4 = peek_failures[5,4],
+                 peek_5_5 = peek_failures[5,5],
+                 peek_5_6 = peek_failures[5,6],
+                 peek_5_7 = peek_failures[5,7],
+                 peek_5_8 = peek_failures[5,8],
+                 peek_5_9 = peek_failures[5,9],
+                 peek_5_10 = peek_failures[5,10],
+                 peek_5_11 = peek_failures[5,11],
+                 peek_5_12 = peek_failures[5,12],
                  
-                 fl_1 = "",
-                 fl_2 = "",
+                 fl_1 = led_failures[1,1],
+                 fl_2 = led_failures[1,2],
                  
-                 decay_1_1 = "",
-                 decay_1_2 = "",
-                 decay_1_3 = "",
-                 decay_1_4 = "",
-                 decay_1_5 = "",
-                 decay_1_6 = "",
-                 decay_1_7 = "",
-                 decay_1_8 = "",
-                 decay_1_9 = "",
-                 decay_1_10 = "",
-                 decay_1_11 = "",
-                 decay_1_12 = "",
-                 decay_2_1 = "",
-                 decay_2_2 = "",
-                 decay_2_3 = "",
-                 decay_2_4 = "",
-                 decay_2_5 = "",
-                 decay_2_6 = "",
-                 decay_2_7 = "",
-                 decay_2_8 = "",
-                 decay_2_9 = "",
-                 decay_2_10 = "",
-                 decay_2_11 = "",
-                 decay_2_12 = "",
-                 decay_3_1 = "",
-                 decay_3_2 = "",
-                 decay_3_3 = "",
-                 decay_3_4 = "",
-                 decay_3_5 = "",
-                 decay_3_6 = "",
-                 decay_3_7 = "",
-                 decay_3_8 = "",
-                 decay_3_9 = "",
-                 decay_3_10 = "",
-                 decay_3_11 = "",
-                 decay_3_12 = "",
-                 decay_4_1 = "P",
-                 decay_4_2 = "",
-                 decay_4_3 = "",
-                 decay_4_4 = "",
-                 decay_4_5 = "",
-                 decay_4_6 = "",
-                 decay_4_7 = "",
-                 decay_4_8 = "",
-                 decay_4_9 = "",
-                 decay_4_10 = "",
-                 decay_4_11 = "",
-                 decay_4_12 = "",
-                 decay_5_1 = "",
-                 decay_5_2 = "",
-                 decay_5_3 = "",
-                 decay_5_4 = "",
-                 decay_5_5 = "",
-                 decay_5_6 = "",
-                 decay_5_7 = "",
-                 decay_5_8 = "",
-                 decay_5_9 = "",
-                 decay_5_10 = "",
-                 decay_5_11 = "",
-                 decay_5_12 = paste(c(paste0(c("FAM: ",  "Placeholder")), paste0(c("FAM: ",  "Placeholder")), paste0(c("FAM: ",  "Placeholder")), paste0(c("FAM: ",  "Placeholder")), paste0(c("FAM: ",  "Placeholder"))), collapse = "\n"),
+                 decay_1_1 = decay_failures[1,1],
+                 decay_1_2 = decay_failures[1,2],
+                 decay_1_3 = decay_failures[1,3],
+                 decay_1_4 = decay_failures[1,4],
+                 decay_1_5 = decay_failures[1,5],
+                 decay_1_6 = decay_failures[1,6],
+                 decay_1_7 = decay_failures[1,7],
+                 decay_1_8 = decay_failures[1,8],
+                 decay_1_9 = decay_failures[1,9],
+                 decay_1_10 = decay_failures[1,10],
+                 decay_1_11 = decay_failures[1,11],
+                 decay_1_12 = decay_failures[1,12],
+                 decay_2_1 = decay_failures[2,1],
+                 decay_2_2 = decay_failures[2,2],
+                 decay_2_3 = decay_failures[2,3],
+                 decay_2_4 = decay_failures[2,4],
+                 decay_2_5 = decay_failures[2,5],
+                 decay_2_6 = decay_failures[2,6],
+                 decay_2_7 = decay_failures[2,7],
+                 decay_2_8 = decay_failures[2,8],
+                 decay_2_9 = decay_failures[2,9],
+                 decay_2_10 = decay_failures[2,10],
+                 decay_2_11 = decay_failures[2,11],
+                 decay_2_12 = decay_failures[2,12],
+                 decay_3_1 = decay_failures[3,1],
+                 decay_3_2 = decay_failures[3,2],
+                 decay_3_3 = decay_failures[3,3],
+                 decay_3_4 = decay_failures[3,4],
+                 decay_3_5 = decay_failures[3,5],
+                 decay_3_6 = decay_failures[3,6],
+                 decay_3_7 = decay_failures[3,7],
+                 decay_3_8 = decay_failures[3,8],
+                 decay_3_9 = decay_failures[3,9],
+                 decay_3_10 = decay_failures[3,10],
+                 decay_3_11 = decay_failures[3,11],
+                 decay_3_12 = decay_failures[3,12],
+                 decay_4_1 = decay_failures[4,1],
+                 decay_4_2 = decay_failures[4,2],
+                 decay_4_3 = decay_failures[4,3],
+                 decay_4_4 = decay_failures[4,4],
+                 decay_4_5 = decay_failures[4,5],
+                 decay_4_6 = decay_failures[4,6],
+                 decay_4_7 = decay_failures[4,7],
+                 decay_4_8 = decay_failures[4,8],
+                 decay_4_9 = decay_failures[4,9],
+                 decay_4_10 = decay_failures[4,10],
+                 decay_4_11 = decay_failures[4,11],
+                 decay_4_12 = decay_failures[4,12],
+                 decay_5_1 = decay_failures[5,1],
+                 decay_5_2 = decay_failures[5,2],
+                 decay_5_3 = decay_failures[5,3],
+                 decay_5_4 = decay_failures[5,4],
+                 decay_5_5 = decay_failures[5,5],
+                 decay_5_6 = decay_failures[5,6],
+                 decay_5_7 = decay_failures[5,7],
+                 decay_5_8 = decay_failures[5,8],
+                 decay_5_9 = decay_failures[5,9],
+                 decay_5_10 = decay_failures[5,10],
+                 decay_5_11 = decay_failures[5,11],
+                 decay_5_12 = decay_failures[5,12],
                  
-                 decay_1 = "",
-                 decay_2 = "",
+                 decay_1 = decay_fl_failures[1,1],
+                 decay_2 = decay_fl_failures[1,2],
                  
                  date = as.character(date()),
                  
-                 result = "PASS",
-                 # result_color = 'green',
-                 name = "Placeholder McPlaceholder"
+                 result = ifelse(any(str_detect(bg_failures, ": "),
+                                str_detect(peek_failures, ": "),
+                                str_detect(led_failures, ": ")),
+                                 "FAIL", "PASS"),
+                 name = "Unknown"
                  
     )
   }
@@ -1092,6 +1290,7 @@ server <- function(input, output, session) {
     toggle("bgMax")
     toggle("peekMin")
     toggle("ledMin")
+    toggle("peekDecay")
     toggle("peek_and_bg")
     
     if (input$dev == TRUE) {
