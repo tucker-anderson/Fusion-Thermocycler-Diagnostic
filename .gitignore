@@ -4,3 +4,5 @@
 .Ruserdata
 # ignore reports from app
 /app/reports
+# ignore database volume from docker
+/database-data
