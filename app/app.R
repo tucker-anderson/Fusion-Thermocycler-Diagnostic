@@ -207,16 +207,6 @@ server <- function(input, output, session) {
   peekFilemd5 <- reactiveVal("")
   bgFilemd5 <- reactiveVal("")
   
-  if (isDatabase) {
-    db <- 'tc'
-    host_db <- '0.0.0.0'
-    db_port <- '5432'
-    db_user <- 'tc_shiny_user'
-    db_password <- 'tc_shiny_pass'
-    
-    con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
-  }
-  
   if (isDev) {
     updateTextInput(session, "pantherSN", value = "NA")
     updateTextInput(session, "thermocyclerSN", value = "NA")
@@ -1229,7 +1219,10 @@ server <- function(input, output, session) {
     #   panther_sn VARCHAR(10)
     # )
     # "))
-    dbSendQuery(conn, paste0("INSERT INTO public.panther_info (panther_sn) VALUES ('", pantherSN, "') ON CONFLICT (panther_sn) DO NOTHING"))
+    rs <- dbSendStatement(conn, paste0("INSERT INTO public.panther_info (panther_sn) VALUES ('", pantherSN, "') ON CONFLICT (panther_sn) DO NOTHING;"))
+    # while(!dbHasCompleted(res)){
+    # }
+    dbClearResult(rs)
   }
   
   ##############################################################################
@@ -1248,28 +1241,41 @@ server <- function(input, output, session) {
     #ensure input is all uppercase to avoid casing conflicts in database
     tcSN <- toupper(tcSN)
     tcPN <- toupper(tcPN)
-    dbSendQuery(conn, paste0("INSERT INTO public.tc_info (tc_sn, tc_pn) VALUES ('",paste(tcSN,"'",",","'",tcPN,),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING"))
+    rs <- dbSendStatement(conn, paste0("INSERT INTO public.tc_info (tc_sn, tc_pn) VALUES ('",paste(tcSN,"'",",","'",tcPN),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING;"))
+    # while(!dbHasCompleted(res)){
+    # }
+    dbClearResult(rs)
   }
   
   ##############################################################################
   # Function to update database with SSW scan files
   # parameters are database connection and scan file path, scan file type (eg bg or peek) and md5 checksum of file
   # return nothing
-  update_database_scan_file <- function(conn, fp, filetype, md5) {
-    
+  update_database_scan <- function(conn, fp, filetype, md5) {
     if (md5 != "") {
-      # dbSendQuery(conn, paste0("CREATE TABLE IF NOT EXISTS public.scan_files
-      # (
-      #   md5 VARCHAR(32) PRIMARY KEY,
-      #   file_type VARCHAR(4),
-      #   file BYTEA
-      # )
-      # "))
+      # dbSendQuery(conn, paste0(CREATE TABLE IF NOT EXISTS public.scans(
+      #     scan_id INT GENERATED ALWAYS AS IDENTITY,
+      #     panther_id INT,
+      #     tc_id INT,
+      #     md5 VARCHAR(32),
+      #     scan scan_type,
+      #     start_timestamp TIMESTAMP,
+      #     end_timestamp TIMESTAMP,
+      #     file BYTEA,
+      #     PRIMARY KEY(scan_id),
+      #     CONSTRAINT fk_panther
+      #       FOREIGN KEY(panther_id) 
+      # 	  REFERENCES panther_info(panther_id),
+      #     CONSTRAINT fk_panther
+      #       FOREIGN KEY(tc_id) 
+      # 	  REFERENCES tc_info(tc_id)
+      # );"))
       
-      dbSendQuery(conn, paste0("INSERT INTO public.scan_files (md5, file_type, file) VALUES ('",paste(md5,"'",",","'",file_type,"'",",","'", fp),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING"))
+      rs <- dbSendStatement(conn, paste0("INSERT INTO public.scans (md5, file_type, file) VALUES ('",paste(md5,"'",",","'",file_type,"'",",","'", fp),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING"))
+      # while(!dbHasCompleted(res)){
+      # }
+      dbClearResult(rs)
     }
-
-    
   }
 
 ################################################################################
@@ -1597,8 +1603,27 @@ server <- function(input, output, session) {
     disable("calculate")
     
     if (isDatabase) {
-      update_database_panther_sn(con, input$pantherSN)
-      update_database_tc_sn(con, input$thermocyclerSN, input$thermocyclerPN)
+      db <- 'tc'
+      host_db <- 'db'
+      db_port <- '5432'
+      db_user <- 'tc_shiny_user'
+      db_password <- 'tc_shiny_pass'
+      
+      con <- dbConnect(RPostgres::Postgres(), dbname = db, host = host_db, port = db_port, user = db_user, password = db_password)
+
+      if (dbIsValid(con)) {
+        update_database_panther_sn(con, input$pantherSN)
+        update_database_tc_sn(con, input$thermocyclerSN, input$thermocyclerPN)
+        # update_database_scan()
+
+        dbDisconnect(con)
+        showNotification("Database updated!") 
+      }
+      else {
+        showNotification("Database NOT updated. Check server logs.") 
+      }
+
+
     }
   })
   

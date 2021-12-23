@@ -2,7 +2,7 @@ version: '3.6'
 
 services:
   database:
-    image: postgres
+    image: postgres:12
     # build:
     #   context: ./postgres
     #   dockerfile: Dockerfile_postgres
@@ -18,11 +18,13 @@ services:
       # Uncomment below to maintain persistent data
       - ./database-data:/var/lib/postgresql/data/
       # Uncomment bellow to intialize the container with data by creating the respective file
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./01-init.sql:/docker-entrypoint-initdb.d/01-init.sql
   
   tc:
     build:
       context: .
       dockerfile: Dockerfile
+    links:
+      - "database:db"
     ports: 
       - 3838:3838
