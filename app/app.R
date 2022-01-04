@@ -5,6 +5,7 @@ library("stringr")
 library("plyr")
 library("openxlsx")
 library("htmltools")
+library(openssl)
 library(DBI)
 
 
@@ -100,7 +101,7 @@ ui <- fluidPage(
         column(4, numericInput("bgMax", "Background Max", value = 1.80, min = 0.0, max = 5.0, step = 0.1), offset = 1),
         column(4, numericInput("peekMin", "Peek Min", value = 0.60, min = 0.0, max = 1.0, step = 0.1), offset = 1),
         column(4, numericInput("ledMin", "LED Min", value = 0.40, min = 0.0, max = 1.0, step = 0.1), offset = 1),
-        column(4, numericInput("peekDecay", "peek Decay", value = 0.30, min = 0.0, max = 1.0, step = 0.1), offset = 1)
+        column(4, numericInput("peekDecay", "Peek Decay", value = 0.30, min = 0.0, max = 1.0, step = 0.1), offset = 1)
       ),
       
       # Horizontal line
@@ -203,9 +204,8 @@ server <- function(input, output, session) {
   isThermocyclerPN <- reactiveVal(FALSE)
   isPeekFile <- reactiveVal(FALSE)
   isBackgroundFile <- reactiveVal(FALSE)
-  
-  peekFilemd5 <- reactiveVal("")
-  bgFilemd5 <- reactiveVal("")
+
+  isAccepted <- FALSE
   
   if (isDev) {
     updateTextInput(session, "pantherSN", value = "NA")
@@ -244,6 +244,30 @@ server <- function(input, output, session) {
     data_set <- data_set[order(data_set$Well) , ]
     
     return(data_set)
+  }
+
+  ##############################################################################
+  # function to start / stop timestamp from SSW scan files
+  # parameter is SSW scan file 
+  # return a string of timestamp for ingestion into postgres
+  get_scan_timestamp <- function(input, n=1) {
+    skip <- str_which(readLines(input), ".*Bank No.*") - 1
+    
+    data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip, quote = "'")
+    timestamps <- data_table$SystemTime
+
+    if (n == 0) {
+      timestamp <- timestamps[1]
+    }
+    else if (n < 0) {
+      timestamp <- rev(timestamps)[abs(n)]
+    }
+    else {
+      timestamp <- timestamps[n]
+    }
+    strtime <- strftime(timestamp, "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
+    
+    return(strtime)
   }
   
   ##############################################################################
@@ -433,7 +457,7 @@ server <- function(input, output, session) {
   # Function to attempt to get manual peek lid values from peek input file
   # parameter is peek SSW scan file
   # return peek lid values as vector of strings. If they cannot be found, return empty vector
-  get_peek_values <- function(input_peek){
+  get_peek_values <- function(input_peek, both_fl=FALSE){
     input_lines <- readLines(input_peek)
     peek_lines <- str_subset(input_lines, "Peek.*Fluorometer")
     
@@ -453,6 +477,10 @@ server <- function(input, output, session) {
     ROX_2 <- str_match(peek_lines, "ROX: ([0-9]+)")[2,2]
     RED646_2 <- str_match(peek_lines, "RED646: ([0-9]+)")[2,2]
     RED677_2 <- str_match(peek_lines, "RED677: ([0-9]+)")[2,2]
+
+    if (both_fl == TRUE) {
+      return(c(FAM_1, HEX_1, ROX_1, RED646_1, RED677_1, FAM_2, HEX_2, ROX_2, RED646_2, RED677_2))
+    }
     
     # no peek lid scanned. SSW uses string of four zeroes for peek placeholder
     if (FAM_1 == "0000" | FAM_2 == "0000") {
@@ -691,7 +719,13 @@ server <- function(input, output, session) {
   # Function to generate excel workbook with summary of peek and bg scans
   # parameters are input from shiny UI (peek file, bg file, barcodes, peek, if lid is present) 
   # return excel spreadsheet
-  generate_workbook <- function(input_peek, input_bg, barcodes, peek_values, is_lid, is_dev) {
+  generate_workbook <- function(input) {
+    input_peek <- input$peekFile
+    input_bg <- input$bgFile
+    barcodes <- c(input$barcode1, input$barcode2)
+    peek_values <- c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5)
+    is_lid <- input$lid
+    is_dev <- input$dev
     #first perform some calculations
     peek_dataset <- generate_data(input_peek[["datapath"]])
     peek_wells <- average_wells(peek_dataset)
@@ -988,14 +1022,28 @@ server <- function(input, output, session) {
     return(led_failures)
   }
 
-  generate_html_report <- function(input) {
+  generate_html_report <- function(input, tester='Unknown') {
     peek_failures <- get_peek_failures(input, input$peekMin)
     bg_failures <- get_bg_failures(input, input$bgMax)
     led_failures <- get_led_failures(input, input$ledMin)
     decay_failures <- get_decay_failures(input, input$peekDecay)
     decay_fl_failures <- get_decay_fl_failures(input, input$peekDecay)
     
-    htmlTemplate("report-template.html",
+    acceptance <- ifelse(any(str_detect(bg_failures, ": "),
+                        str_detect(peek_failures, ": "),
+                        str_detect(led_failures, ": "),
+                        str_detect(decay_failures, ": "),
+                        str_detect(decay_fl_failures, ": ")),
+                        "FAIL", "PASS")
+                    
+    if (acceptance == "PASS") {
+      isAccepted <- TRUE
+    }
+    else {
+      isAccepted <- FALSE
+    }
+    
+    report <- htmlTemplate("report-template.html",
                  tool_version = version,
                  panther_sn = input$pantherSN,
                  tc_sn = input$thermocyclerSN,
@@ -1191,13 +1239,11 @@ server <- function(input, output, session) {
                  
                  date = as.character(date()),
                  
-                 result = ifelse(any(str_detect(bg_failures, ": "),
-                                str_detect(peek_failures, ": "),
-                                str_detect(led_failures, ": ")),
-                                 "FAIL", "PASS"),
-                 name = "Unknown"
-                 
+                 result = acceptance,
+
+                 name = tester
     )
+    return(report)
   }
 
   # check_wells <- function(wells, threshold) {
@@ -1241,7 +1287,7 @@ server <- function(input, output, session) {
     #ensure input is all uppercase to avoid casing conflicts in database
     tcSN <- toupper(tcSN)
     tcPN <- toupper(tcPN)
-    rs <- dbSendStatement(conn, paste0("INSERT INTO public.tc_info (tc_sn, tc_pn) VALUES ('",paste(tcSN,"'",",","'",tcPN),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING;"))
+    rs <- dbSendStatement(conn, paste0("INSERT INTO public.tc_info (tc_sn, tc_pn) VALUES ('",paste0(tcSN,"'",",","'",tcPN),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING;"))
     # while(!dbHasCompleted(res)){
     # }
     dbClearResult(rs)
@@ -1249,33 +1295,190 @@ server <- function(input, output, session) {
   
   ##############################################################################
   # Function to update database with SSW scan files
-  # parameters are database connection and scan file path, scan file type (eg bg or peek) and md5 checksum of file
+  # parameters are database connection and scan file path, scan file type (eg bg or peek)
   # return nothing
-  update_database_scan <- function(conn, fp, filetype, md5) {
-    if (md5 != "") {
-      # dbSendQuery(conn, paste0(CREATE TABLE IF NOT EXISTS public.scans(
-      #     scan_id INT GENERATED ALWAYS AS IDENTITY,
-      #     panther_id INT,
-      #     tc_id INT,
-      #     md5 VARCHAR(32),
-      #     scan scan_type,
-      #     start_timestamp TIMESTAMP,
-      #     end_timestamp TIMESTAMP,
-      #     file BYTEA,
-      #     PRIMARY KEY(scan_id),
-      #     CONSTRAINT fk_panther
-      #       FOREIGN KEY(panther_id) 
-      # 	  REFERENCES panther_info(panther_id),
-      #     CONSTRAINT fk_panther
-      #       FOREIGN KEY(tc_id) 
-      # 	  REFERENCES tc_info(tc_id)
-      # );"))
-      
-      rs <- dbSendStatement(conn, paste0("INSERT INTO public.scans (md5, file_type, file) VALUES ('",paste(md5,"'",",","'",file_type,"'",",","'", fp),"') ON CONFLICT (tc_sn, tc_pn) DO NOTHING"))
-      # while(!dbHasCompleted(res)){
-      # }
-      dbClearResult(rs)
+  update_database_scan <- function(conn, pantherSN, tcSN, tcPN, fp) {
+    # dbSendQuery(conn, paste0(CREATE TABLE IF NOT EXISTS public.scans(
+    #     scan_id INT GENERATED ALWAYS AS IDENTITY,
+    #     panther_id INT NOT NULL,
+    #     tc_id INT NOT NULL,
+    #     md5 VARCHAR(32) NOT NULL,
+    #     is_peek BOOLEAN NOT NULL,
+    #     is_bg BOOLEAN NOT NULL,
+    #     is_pm_bg BOOLEAN NOT NULL,
+    #     barcode_1 VARCHAR(23),
+    #     barcode_2 VARCHAR(23),
+    #     peek_1_fam VARCHAR(5),
+    #     peek_1_hex VARCHAR(5),
+    #     peek_1_rox VARCHAR(5),
+    #     peek_1_646 VARCHAR(5),
+    #     peek_1_677 VARCHAR(5),
+    #     peek_2_fam VARCHAR(5),
+    #     peek_2_hex VARCHAR(5),
+    #     peek_2_rox VARCHAR(5),
+    #     peek_2_646 VARCHAR(5),
+    #     peek_2_677 VARCHAR(5),
+    #     tc_firmware VARCHAR(10),
+    #     start_timestamp TIMESTAMP NOT NULL,
+    #     end_timestamp TIMESTAMP NOT NULL,
+    #     file BYTEA NOT NULL,
+    #     PRIMARY KEY(scan_id),
+    #     UNIQUE(md5),
+    #     CONSTRAINT fk_panther
+    #       FOREIGN KEY(panther_id) 
+    # 	  REFERENCES panther_info(panther_id),
+    #     CONSTRAINT fk_tc
+    #       FOREIGN KEY(tc_id) 
+    # 	  REFERENCES tc_info(tc_id)
+    # );
+    md5 <- as.character(md5(file(fp, open = "rb")))
+    file_b <- file(fp, open = "rb")
+
+    is_peek <- check_filetype(fp, "Peek Lid Scan")
+    is_bg <- check_filetype(fp, "Background Scan")
+    is_pm_bg <- check_filetype(fp, "Panther Main BG Scan")
+
+    if (is_peek == TRUE) {
+      barcode_vals <- get_barcodes(fp)
+      barcode_1 <- barcode_vals[1]
+      barcode_2 <- barcode_vals[2]
+      peek_vals <- get_peek_values(fp, both_fl=TRUE)
+      peek_1_fam <- peek_vals[1]
+      peek_1_hex <- peek_vals[2]
+      peek_1_rox <- peek_vals[3]
+      peek_1_647 <- peek_vals[4]
+      peek_1_677 <- peek_vals[5]
+      peek_2_fam <- peek_vals[6]
+      peek_2_hex <- peek_vals[7]
+      peek_2_rox <- peek_vals[8]
+      peek_2_647 <- peek_vals[9]
+      peek_2_677 <- peek_vals[10]
     }
+    else {
+      barcode_1 <- ""
+      barcode_2 <- ""
+      peek_1_fam <- ""
+      peek_1_hex <- ""
+      peek_1_rox <- ""
+      peek_1_647 <- ""
+      peek_1_677 <- ""
+      peek_2_fam <- ""
+      peek_2_hex <- ""
+      peek_2_rox <- ""
+      peek_2_647 <- ""
+      peek_2_677 <- ""
+    }
+
+    #TODO Implement firmware upload from file or user input from GUI
+    # for now, place empty value in db
+    tc_firmware <- ""
+
+    start_timestamp <- get_scan_timestamp(fp, n=1)
+    end_timestamp <- get_scan_timestamp(fp, n=-1)
+
+    panther_select <- paste0("(SELECT panther_id FROM public.panther_info WHERE panther_sn='", pantherSN, "')")
+    tc_select <- paste0("(SELECT tc_id FROM public.tc_info WHERE (tc_sn, tc_pn)= ('",paste0(tcSN,"'",",","'",tcPN),"') )")
+
+    rs <- dbSendStatement(conn, paste0("INSERT INTO public.scans (panther_id, tc_id, md5, is_peek, is_bg, is_pm_bg, barcode_1, barcode_2, peek_1_fam, peek_1_hex, peek_1_rox, peek_1_647, peek_1_677, peek_2_fam, peek_2_hex, peek_2_rox, peek_2_647, peek_2_677, tc_firmware, start_timestamp, end_timestamp, file) VALUES (",
+                                paste0(panther_select, ",",
+                                      tc_select, ",","'",
+                                      md5,"'",",","'",
+                                      is_peek,"'",",","'",
+                                      is_bg,"'",",","'",
+                                      is_pm_bg,"'",",","'",
+                                      barcode_1,"'",",","'",
+                                      barcode_2,"'",",","'",
+                                      peek_1_fam,"'",",","'",
+                                      peek_1_hex,"'",",","'",
+                                      peek_1_rox,"'",",","'",
+                                      peek_1_647,"'",",","'",
+                                      peek_1_677,"'",",","'",
+                                      peek_2_fam,"'",",","'",
+                                      peek_2_hex,"'",",","'",
+                                      peek_2_rox,"'",",","'",
+                                      peek_2_647,"'",",","'",
+                                      peek_2_677,"'",",","'",
+                                      tc_firmware,"'",",","'",
+                                      start_timestamp,"'",",","'",
+                                      end_timestamp,"'",",","'",
+                                      file_b),
+                                      "') ON CONFLICT (md5) DO NOTHING;"))
+    # while(!dbHasCompleted(res)){
+    # }
+    dbClearResult(rs)
+  }
+  ##############################################################################
+  # Function to update database with SSW scan files
+  # parameters are database connection and scan file path, scan file type (eg bg or peek)
+  # return nothing
+  update_database_report <- function(conn, input, version, acceptance, excel_file, html_file) {
+    # dbSendQuery(conn, paste0(CREATE TABLE IF NOT EXISTS public.reports(
+    #     report_id INT GENERATED ALWAYS AS IDENTITY,
+    #     peek_id INT NOT NULL,
+    #     bg_id INT NOT NULL,
+    #     is_dev BOOLEAN NOT NULL,
+    #     barcode_1 VARCHAR(23),
+    #     barcode_2 VARCHAR(23),
+    #     peek_fam VARCHAR(5),
+    #     peek_hex VARCHAR(5),
+    #     peek_rox VARCHAR(5),
+    #     peek_647 VARCHAR(5),
+    #     peek_677 VARCHAR(5),
+    #     bg_max NUMERIC(3, 2) NOT NULL,
+    #     peek_min NUMERIC(3, 2) NOT NULL,
+    #     led_min NUMERIC(3, 2) NOT NULL,
+    #     peek_decay NUMERIC(3, 2) NOT NULL,
+    #     acceptance BOOLEAN NOT NULL,
+    #     app_version VARCHAR NOT NULL,
+    #     excel_md5 VARCHAR(32) NOT NULL,
+    #     html_md5 VARCHAR(32) NOT NULL,
+    #     excel_file BYTEA NOT NULL,
+    #     html_file BYTEA NOT NULL,
+    #     PRIMARY KEY(report_id),
+    #     UNIQUE(excel_md5, html_md5),
+    #     CONSTRAINT fk_peek
+    #       FOREIGN KEY(peek_id) 
+    # 	  REFERENCES scans(scan_id),
+    #     CONSTRAINT fk_bg
+    #       FOREIGN KEY(bg_id) 
+    # 	  REFERENCES scans(scan_id)
+    # );
+    bg_md5 <- as.character(md5(file(input$bgFile[["datapath"]], open = "rb")))
+    peek_md5 <- as.character(md5(file(input$peekFile[["datapath"]], open = "rb")))
+    # html_file <- generate_html_report(input)
+    # excel_file <- generate_workbook(input)
+    # html_md5 <- as.character(md5(html_file))
+    # excel_md5 <- as.character(md5(excel_file))
+    # html_md5 <- ""
+    # excel_md5 <- ""
+
+    bg_select <- paste0("(SELECT scan_id FROM public.scans WHERE md5='", bg_md5, "')")
+    peek_select <- paste0("(SELECT scan_id FROM public.scans WHERE md5='", peek_md5, "')")
+
+    rs <- dbSendStatement(conn, paste0("INSERT INTO public.reports (peek_id, bg_id, is_dev, barcode_1, barcode_2, peek_fam, peek_hex, peek_rox, peek_647, peek_677, bg_max, peek_min, led_min, peek_decay, acceptance, app_version, report_ts, excel_file, html_file) VALUES (",
+                                paste0(peek_select, ",",
+                                      bg_select, ",","'",
+                                      input$dev,"'",",","'",
+                                      input$barcode1,"'",",","'",
+                                      input$barcode2,"'",",","'",
+                                      input$peek1,"'",",","'",
+                                      input$peek2,"'",",","'",
+                                      input$peek3,"'",",","'",
+                                      input$peek4,"'",",","'",
+                                      input$peek5,"'",",","'",
+                                      input$bgMax,"'",",","'",
+                                      input$peekMin,"'",",","'",
+                                      input$ledMin,"'",",","'",
+                                      input$peekDecay,"'",",","'",
+                                      acceptance,"'",",","'",
+                                      version,"'",",",
+                                      "NOW()",",","'",
+                                      # excel_md5,"'",",","'",
+                                      # html_md5,"'",",","'",
+                                      excel_file,"'",",","'",
+                                      html_file),
+                                      "');"))#" ON CONFLICT (excel_md5, html_md5) DO NOTHING;"))
+    dbClearResult(rs)
   }
 
 ################################################################################
@@ -1434,7 +1637,6 @@ server <- function(input, output, session) {
       updateTabsetPanel(session, "tabs", selected = "Peek")
       updateTabsetPanel(session, "peek_tabs", selected = "Raw Peek")
       isPeekFile(TRUE)
-      peekFilemd5(toString(tools::md5sum(input$peekFile[["datapath"]])))
       
       barcodes <- get_barcodes(input$peekFile[["datapath"]])
       peek <- get_peek_values(input$peekFile[["datapath"]])
@@ -1506,7 +1708,6 @@ server <- function(input, output, session) {
       updateTabsetPanel(session, "tabs", selected = "Background")
       updateTabsetPanel(session, "bg_tabs", selected = "Raw Background")
       isBackgroundFile(TRUE)
-      bgFilemd5(toString(tools::md5sum(input$bgFile[["datapath"]])))
     }
     else {
       alert("Unknown Scan File detected. Please upload correct scan file.")
@@ -1593,15 +1794,29 @@ server <- function(input, output, session) {
     enable("excel_download")
     enable("html_download")
     updateTabsetPanel(session, "tabs", selected = "Report")
-    output$report <- renderUI(generate_html_report(input))
+    wb <- generate_workbook(input)
+    html <- generate_html_report(input)
 
-    reset("bgFile")
-    isBackgroundFile(FALSE)
-    reset("peekFile")
-    isPeekFile(FALSE)
+    output$report <- renderUI(html)
+
+    excel_filepath <- "./reports/ThermocyclerDiagnosticReport.xlsx"
+    html_filepath <- "./reports/ThermocyclerDiagnosticReport.html"
     
-    disable("calculate")
+    if (file.exists(excel_filepath)) {
+      file.remove(excel_filepath)
+    }
+    if (file.exists(html_filepath)) {
+      file.remove(html_filepath)
+    }
+    saveWorkbook(wb, excel_filepath)
+    save_html(html, html_filepath)
+
+    excel_md5 <- as.character(md5(file(excel_filepath, open = "rb")))
+    excel_file <- file(excel_filepath, open = "rb")
     
+    html_md5 <- as.character(md5(file(html_filepath, open = "rb")))
+    html_file <- file(html_filepath, open = "rb")
+
     if (isDatabase) {
       db <- 'tc'
       host_db <- 'db'
@@ -1614,7 +1829,9 @@ server <- function(input, output, session) {
       if (dbIsValid(con)) {
         update_database_panther_sn(con, input$pantherSN)
         update_database_tc_sn(con, input$thermocyclerSN, input$thermocyclerPN)
-        # update_database_scan()
+        update_database_scan(con, input$pantherSN, input$thermocyclerSN, input$thermocyclerPN, input$bgFile[["datapath"]])
+        update_database_scan(con, input$pantherSN, input$thermocyclerSN, input$thermocyclerPN, input$peekFile[["datapath"]])
+        update_database_report(con, input, version, isAccepted, excel_file, html_file)
 
         dbDisconnect(con)
         showNotification("Database updated!") 
@@ -1622,9 +1839,16 @@ server <- function(input, output, session) {
       else {
         showNotification("Database NOT updated. Check server logs.") 
       }
-
-
     }
+
+    reset("bgFile")
+    isBackgroundFile(FALSE)
+    reset("peekFile")
+    isPeekFile(FALSE)
+
+    isAccepted <- TRUE
+    
+    disable("calculate")
   })
   
   # only enable calculate if both files uploaded correctly & SNs input in correct format
@@ -1648,21 +1872,18 @@ server <- function(input, output, session) {
         # Copy the report file to a temporary directory before processing it, in
         # case we don't have write permissions to the current working dir (which
         # can happen when deployed).
-        wb <- generate_workbook(input$peekFile, input$bgFile,
-                                c(input$barcode1, input$barcode2),
-                                c(input$peek1, input$peek2, input$peek3, input$peek4, input$peek5),
-                                input$lid, input$dev)
+        # wb <- generate_workbook(input)
         
         filepath <- "./reports/ThermocyclerDiagnosticReport.xlsx"
         # filepath <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
         
-        if (file.exists(filepath)) {
-          file.remove(filepath)
-        }
+        # if (file.exists(filepath)) {
+        #   file.remove(filepath)
+        # }
         
         # tempReport <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
-        saveWorkbook(wb, filepath)
-        file.copy("./reports/ThermocyclerDiagnosticReport.xlsx", file)
+        # saveWorkbook(wb, filepath)
+        file.copy(filepath, file)
         # file.copy("ThermocyclerDiagnosticReport.xlsx", tempReport, overwrite = TRUE)
       }
   )
@@ -1673,18 +1894,18 @@ server <- function(input, output, session) {
       # Copy the report file to a temporary directory before processing it, in
       # case we don't have write permissions to the current working dir (which
       # can happen when deployed).
-      report <- generate_html_report(input)
+      # report <- generate_html_report(input)
       
       filepath <- "./reports/ThermocyclerDiagnosticReport.html"
       # filepath <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
       
-      if (file.exists(filepath)) {
-        file.remove(filepath)
-      }
+      # if (file.exists(filepath)) {
+      #   file.remove(filepath)
+      # }
       
       # tempReport <- file.path(tempdir(), "ThermocyclerDiagnosticReport.xlsx")
-      save_html(report, filepath)
-      file.copy("./reports/ThermocyclerDiagnosticReport.html", file)
+      # save_html(report, filepath)
+      file.copy(filepath, file)
       # file.copy("ThermocyclerDiagnosticReport.xlsx", tempReport, overwrite = TRUE)
     }
   )

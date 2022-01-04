@@ -33,6 +33,7 @@ RUN R -e "install.packages('stringr', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('plyr', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('openxlsx', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('htmltools', repos='http://cran.rstudio.com/')"
+RUN R -e "install.packages('openssl', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('RPostgres', dependencies=TRUE, repos='http://cran.rstudio.com/')"
 
 # copy the app to the image
