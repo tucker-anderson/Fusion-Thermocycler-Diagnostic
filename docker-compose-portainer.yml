@@ -2,7 +2,7 @@ version: '3.6'
 
 services:
   database:
-    image: postgres
+    image: postgres:12
     # build:
     #   context: ./postgres
     #   dockerfile: Dockerfile_postgres
@@ -16,7 +16,7 @@ services:
       - 5432:5432
     volumes:
       # Uncomment below to maintain persistent data
-      - ./database-data:/var/lib/postgresql/data/
+      - ./opt/Fusion-Thermocycler-Diagnostic-db:/var/lib/postgresql/data/
       # Uncomment below to intialize the container with data by creating the respective file
       - ./01-init.sql:/docker-entrypoint-initdb.d/01-init.sql
    
