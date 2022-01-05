@@ -256,22 +256,24 @@ server <- function(input, output, session) {
     data_table <- read.table(input, header = TRUE, sep = ";", fill = TRUE, skip = skip, quote = "'")
     timestamps <- data_table$SystemTime
 
-    if (n == 0) {
+    
+    if (length(timestamps) == 0) {
+      #if poorly formatted file, set to start of time...  
+      strtime <- strftime("1960-01-01   00:00:00", "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
+    }
+    else if (n == 0) {
       timestamp <- timestamps[1]
+      strtime <- strftime(timestamp, "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
     }
     else if (n < 0) {
       timestamp <- rev(timestamps)[abs(n)]
+      strtime <- strftime(timestamp, "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
     }
     else {
       timestamp <- timestamps[n]
+      strtime <- strftime(timestamp, "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
     }
-    strtime <- strftime(timestamp, "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
 
-    #if poorly formatted file, set to start of time...  
-    if (length(strtime) == 0) {
-      strtime <- strftime("1960-01-01   00:00:00", "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
-    }
-    
     return(strtime)
   }
   
