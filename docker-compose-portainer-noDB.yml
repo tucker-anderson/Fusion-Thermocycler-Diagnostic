@@ -1,0 +1,7 @@
+version: '3.6'
+
+services:
+  tc:
+    image: sdbioinfoapp06:5001/fusion-thermocycler-diagnostic-no_db:latest
+    ports: 
+      - 3839:3838

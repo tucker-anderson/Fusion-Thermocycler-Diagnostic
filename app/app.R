@@ -266,6 +266,11 @@ server <- function(input, output, session) {
       timestamp <- timestamps[n]
     }
     strtime <- strftime(timestamp, "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
+
+    #if poorly formatted file, set to start of time...  
+    if (length(strtime) == 0) {
+      strtime <- strftime("1960-01-01   00:00:00", "%Y-%m-%d   %H:%M:%S", usetz=FALSE)
+    }
     
     return(strtime)
   }

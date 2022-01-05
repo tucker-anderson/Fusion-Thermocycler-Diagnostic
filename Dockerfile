@@ -37,7 +37,7 @@ RUN R -e "install.packages('openssl', repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('RPostgres', dependencies=TRUE, repos='http://cran.rstudio.com/')"
 
 # copy the app to the image
-COPY ./app /srv/shiny-server/app
+COPY /app/ /srv/shiny-server/app/
 # COPY countries_small.geojson /srv/shiny-server/
 # COPY country_cases.csv /srv/shiny-server/
 # COPY PantherCoords.csv /srv/shiny-server/
